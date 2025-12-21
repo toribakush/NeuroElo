@@ -1,13 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-// --- CONEXÃO COM A CHAVE PADRÃO (DEFAULT) ---
-const SUPABASE_URL = "https://ttyebetdyvkjlflfkomx.supabase.co";
+// --- CONFIGURAÇÃO CORRIGIDA (AGORA VAI!) ---
 
-// Usando a chave 'Default' que aparece no seu painel (VGskK...)
-// Ela é mais segura de funcionar que chaves geradas manualmente
+// 1. URL DO SEU PROJETO ATUAL (Baseada no ID que você mandou)
+const SUPABASE_URL = "https://xqwxwnvwjnxbqrnshpkw.supabase.co";
+
+// 2. CHAVE PADRÃO DO PROJETO (Aquela que começa com VGskK...)
 const SUPABASE_KEY = "sb_publishable_VGskK9gdVs3mZPxehL4hpA_wUJLornj";
 
-console.log("--- TENTATIVA FINAL ---");
-console.log("Usando chave Default:", SUPABASE_KEY);
+console.log("--- CONEXÃO ALINHADA ---");
+console.log("URL:", SUPABASE_URL);
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
