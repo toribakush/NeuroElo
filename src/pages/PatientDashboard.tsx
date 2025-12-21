@@ -7,20 +7,20 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell
 import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
 
-const COLORS = ['hsl(215, 45%, 20%)', 'hsl(158, 40%, 45%)', 'hsl(32, 75%, 55%)', 'hsl(12, 60%, 55%)', 'hsl(280, 45%, 55%)', 'hsl(210, 20%, 70%)'];
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const COLORS = ['hsl(215, 45%, 20%)', 'hsl(158, 40%, 45%)', 'hsl(32, 75%, 55%)', 'hsl(12, 60%, 55%)', 'hsl(280, 45%, 55%)', 'hsl(210, 20%, 70%)'];
 
-type TimeRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
-
-// CORES REAIS PARA O CÓDIGO
+// CORES PARA AS BOLINHAS E HEATMAP
 const MOOD_COLORS: Record<string, string> = {
   bom_dia: '#22c55e',   // Verde
   ansiedade: '#f97316', // Laranja
   crise: '#ef4444',     // Vermelho
   meltdown: '#a855f7',  // Roxo
-  default: '#1e293b'    // Azul (para médias)
+  default: '#1e293b'    // Azul Escuro
 };
+
+type TimeRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 const PatientDashboard: React.FC = () => {
   const { patientId } = useParams();
@@ -31,7 +31,6 @@ const PatientDashboard: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   
   const [triggerStats, setTriggerStats] = useState<any[]>([]);
-  // MUDANÇA: Agora guardamos uma lista de humores por célula, não só um número
   const [heatmapData, setHeatmapData] = useState<string[][][]>([]); 
   const [locationStats, setLocationStats] = useState<any[]>([]);
 
@@ -81,13 +80,10 @@ const PatientDashboard: React.FC = () => {
       .map(([key, value]) => ({ trigger: key, count: value, percentage: Math.round((value / totalTriggers) * 100) }))
       .sort((a, b) => b.count - a.count));
 
-    // 2. HEATMAP (Lógica Nova)
-    // Cria uma matriz 7x24 onde cada célula é um array de strings (humores)
+    // 2. Heatmap
     const matrix: string[][][] = Array(7).fill(0).map(() => Array(24).fill(0).map(() => []));
-    
     data.forEach(log => {
       const d = new Date(log.date);
-      // Adiciona o humor à lista daquela hora/dia
       matrix[d.getDay()][d.getHours()].push(log.mood);
     });
     setHeatmapData(matrix);
@@ -113,7 +109,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DO GRÁFICO DE LINHA ---
+  // --- CHART DATA ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
     const now = new Date();
@@ -169,7 +165,7 @@ const PatientDashboard: React.FC = () => {
 
   }, [logs, timeRange]);
 
-  // Componente da Bolinha Colorida no Gráfico
+  // Bolinha Customizada
   const CustomizedDot = (props: any) => {
     const { cx, cy, payload } = props;
     let fill = MOOD_COLORS.default;
@@ -177,9 +173,7 @@ const PatientDashboard: React.FC = () => {
       if (payload.mood === 'bom_dia') fill = MOOD_COLORS.bom_dia;
       else if (payload.mood === 'ansiedade') fill = MOOD_COLORS.ansiedade;
       else if (payload.mood === 'meltdown') fill = MOOD_COLORS.meltdown;
-      else if (payload.mood === 'crise') {
-        fill = (payload.intensity && payload.intensity < 5) ? '#f59e0b' : MOOD_COLORS.crise;
-      }
+      else if (payload.mood === 'crise') fill = (payload.intensity && payload.intensity < 5) ? '#f59e0b' : MOOD_COLORS.crise;
     }
     return (
       <svg x={cx - 5} y={cy - 5} width={10} height={10} fill={fill} viewBox="0 0 10 10">
@@ -189,18 +183,13 @@ const PatientDashboard: React.FC = () => {
     );
   };
 
-  // --- NOVA FUNÇÃO PARA A COR DO HEATMAP ---
   const getHeatmapColor = (moods: string[]) => {
-    if (moods.length === 0) return '#f3f4f6'; // Cinza se não tiver nada
-
-    // Define a prioridade: se tiver 'crise' na lista, usa vermelho.
-    // Se não, vê se tem 'meltdown', e assim por diante.
+    if (moods.length === 0) return '#f3f4f6';
     if (moods.includes('crise')) return MOOD_COLORS.crise;
     if (moods.includes('meltdown')) return MOOD_COLORS.meltdown;
     if (moods.includes('ansiedade')) return MOOD_COLORS.ansiedade;
     if (moods.includes('bom_dia')) return MOOD_COLORS.bom_dia;
-    
-    return MOOD_COLORS.default; // Fallback
+    return MOOD_COLORS.default;
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen"><Loader2 className="animate-spin" /></div>;
@@ -217,14 +206,14 @@ const PatientDashboard: React.FC = () => {
 
       <main className="px-6 space-y-6">
         
-        {/* HEATMAP COLORIDO */}
+        {/* Heatmap */}
         <div className="card-elevated p-4 overflow-hidden">
           <div className="flex items-center gap-2 mb-4">
             <h3 className="font-semibold text-foreground">Mapa de Calor de Eventos</h3>
             <div className="group relative">
                <Info className="w-4 h-4 text-muted-foreground cursor-help"/>
                <span className="absolute left-6 top-0 w-64 text-xs bg-black text-white p-2 rounded hidden group-hover:block z-10">
-                 Mostra todos os registros. A cor indica o evento mais grave naquele horário (Vermelho = Crise, Verde = Bom Dia).
+                 Cor indica gravidade: Vermelho (Crise) {'>'} Roxo (Meltdown) {'>'} Laranja (Ansiedade) {'>'} Verde (Bom dia).
                </span>
             </div>
           </div>
@@ -241,14 +230,12 @@ const PatientDashboard: React.FC = () => {
                     <div 
                       key={hourIndex} 
                       className="flex-1 h-full mx-[1px] rounded-sm transition-all relative group"
-                      // AQUI: Usa a nova função de cor baseada na lista de humores
                       style={{ backgroundColor: getHeatmapColor(moods) }}
                     >
                       {moods.length > 0 && (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black text-white text-xs rounded hidden group-hover:block whitespace-nowrap z-20 shadow-lg">
                           {moods.length} evento(s)
                           <div className="text-[10px] mt-1 capitalize">
-                            {/* Mostra os tipos únicos de evento */}
                             {[...new Set(moods)].map(m => EVENT_TYPE_LABELS[m as keyof typeof EVENT_TYPE_LABELS] || m).join(', ')}
                           </div>
                         </div>
@@ -259,18 +246,11 @@ const PatientDashboard: React.FC = () => {
               ))}
             </div>
           </div>
-           {/* Legenda do Heatmap */}
-           <div className="flex flex-wrap gap-3 mt-3 justify-center px-2">
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><span className="w-2 h-2 rounded-full bg-green-500"></span> Bom Dia</div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Ansiedade</div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><span className="w-2 h-2 rounded-full bg-purple-500"></span> Meltdown</div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crise</div>
-            </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* GRÁFICO DE LINHA COLORIDO */}
+            {/* GRÁFICO COM GRADIENTE DE COR */}
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -302,15 +282,25 @@ const PatientDashboard: React.FC = () => {
                 {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData}>
+                      {/* DEFINIÇÃO DO GRADIENTE: Verde embaixo, Vermelho em cima */}
+                      <defs>
+                        <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={1}/> {/* Crise (Topo) */}
+                          <stop offset="50%" stopColor="#f97316" stopOpacity={1}/> {/* Ansiedade (Meio) */}
+                          <stop offset="95%" stopColor="#22c55e" stopOpacity={1}/> {/* Bom dia (Baixo) */}
+                        </linearGradient>
+                      </defs>
+
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                       <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                       <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      
                       <Line 
                         type="monotone" 
                         dataKey="intensity" 
-                        stroke={timeRange === 'daily' ? '#94a3b8' : MOOD_COLORS.default} // Linha cinza no diário para destacar as bolinhas
-                        strokeWidth={2} 
+                        stroke="url(#colorIntensity)" /* APLICA O GRADIENTE AQUI */
+                        strokeWidth={3} 
                         dot={<CustomizedDot />}
                         activeDot={{ r: 6 }}
                       />
@@ -324,7 +314,7 @@ const PatientDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Ranking de Locais (Mantido) */}
+            {/* Ranking de Locais */}
             <div className="card-elevated p-4">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-primary" />
