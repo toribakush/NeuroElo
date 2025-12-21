@@ -1,10 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Estamos colocando as chaves direto aqui para garantir que funcionem
+const SUPABASE_URL = "https://ttyebetdyvkjlflfkomx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_VGskK9gdVs3mZPxehL4hpA_wUJLornj";
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error("ERRO CRÍTICO: Variáveis do Supabase não encontradas. Verifique o arquivo .env");
-}
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Cria a conexão
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
