@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
-import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise } from 'lucide-react';
+import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise, Trash2 } from 'lucide-react'; // <--- Adicionei Trash2
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,7 @@ const FamilyHome: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // Estado para evitar cliques duplos
 
   // 1. Busca Perfil
   const { data: profile } = useQuery({
@@ -63,14 +64,14 @@ const FamilyHome: React.FC = () => {
 
       let periodText = "Variado";
       let PeriodIcon = Activity;
-      let iconColor = "#64748b"; // cinza padrão
+      let iconColor = "#64748b"; 
       
       if (morning > afternoon && morning > night) { 
-        periodText = "Manhã"; PeriodIcon = Sunrise; iconColor = "#eab308"; // amarelo
+        periodText = "Manhã"; PeriodIcon = Sunrise; iconColor = "#eab308"; 
       } else if (afternoon > morning && afternoon > night) { 
-        periodText = "Tarde"; PeriodIcon = Sun; iconColor = "#f97316"; // laranja
+        periodText = "Tarde"; PeriodIcon = Sun; iconColor = "#f97316"; 
       } else if (night > morning && night > afternoon) { 
-        periodText = "Noite"; PeriodIcon = Moon; iconColor = "#3b82f6"; // azul
+        periodText = "Noite"; PeriodIcon = Moon; iconColor = "#3b82f6"; 
       }
 
       // B. Gatilho Top
@@ -122,6 +123,25 @@ const FamilyHome: React.FC = () => {
     }
   };
 
+  // --- NOVA FUNÇÃO DE EXCLUIR ---
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Tem certeza que deseja excluir este registro?")) return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.from('daily_logs').delete().eq('id', id);
+      if (error) throw error;
+      
+      toast({ title: "Registro excluído" });
+      // Atualiza a lista automaticamente
+      queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
+    } catch (error) {
+      toast({ title: "Erro ao excluir", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
@@ -150,13 +170,13 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* --- CARDS DE INSIGHTS COM CORES REAIS --- */}
+        {/* --- CARDS DE INSIGHTS --- */}
         {insights ? (
           <div className="grid grid-cols-2 gap-3">
             {/* Card Período */}
             <div 
               className="card-elevated p-4 flex flex-col items-center justify-center text-center"
-              style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }} // Azul claro forçado
+              style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}
             >
               <insights.PeriodIcon className="w-8 h-8 mb-2" style={{ color: insights.iconColor }} />
               <p className="text-xs text-gray-500">Pior Período</p>
@@ -166,7 +186,7 @@ const FamilyHome: React.FC = () => {
             {/* Card Gatilho */}
             <div 
               className="card-elevated p-4 flex flex-col items-center justify-center text-center"
-              style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }} // Laranja claro forçado
+              style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }}
             >
               <AlertCircle className="w-8 h-8 mb-2" style={{ color: '#f97316' }} />
               <p className="text-xs text-gray-500">Principal Gatilho</p>
@@ -179,7 +199,7 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* --- VISUAL DE BLOCOS (CORES FORÇADAS) --- */}
+        {/* --- VISUAL DE BLOCOS --- */}
         {insights && (
           <div className="card-elevated p-4">
              <div className="flex items-center justify-between mb-3">
@@ -203,8 +223,7 @@ const FamilyHome: React.FC = () => {
                           key={block}
                           className="w-8 h-6 rounded-sm transition-all"
                           style={{ 
-                            // Lógica de cor FORÇADA via style
-                            backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', // Vermelho ou Cinza
+                            backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', 
                             opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 
                           }}
                         />
@@ -217,15 +236,18 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* Lista Recente */}
+        {/* Lista Recente com botão de EXCLUIR */}
         <div>
           <h2 className="text-base font-semibold mb-3 ml-1">Últimos Registros</h2>
           <div className="space-y-2">
-            {events.slice(0, 3).map((event: any) => (
-              <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm">
-                <div className={`w-2 h-2 rounded-full ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
+            {events.slice(0, 5).map((event: any) => (
+              <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm group">
+                {/* Bolinha Colorida */}
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
+                
+                {/* Conteúdo */}
                 <div className="flex-1 min-w-0">
-                   <div className="flex justify-between">
+                   <div className="flex justify-between items-center">
                       <span className="font-medium text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</span>
                       <span className="text-xs text-muted-foreground">
                         {event.date ? format(new Date(event.date), 'dd/MM HH:mm') : '-'}
@@ -233,6 +255,16 @@ const FamilyHome: React.FC = () => {
                    </div>
                    {event.notes && <p className="text-xs text-muted-foreground truncate">{event.notes}</p>}
                 </div>
+
+                {/* Botão de Lixeira (Discreto) */}
+                <button 
+                  onClick={() => handleDelete(event.id)}
+                  className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-70 hover:opacity-100"
+                  disabled={isDeleting}
+                  title="Excluir registro"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
