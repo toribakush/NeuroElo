@@ -27,7 +27,7 @@ const PatientDashboard: React.FC = () => {
   const [maxCrisisCount, setMaxCrisisCount] = useState(0);
   const [locationStats, setLocationStats] = useState<any[]>([]);
 
-  // ESTADO DO FILTRO DE TEMPO (Aqui está a mágica)
+  // Filtro de Tempo (Padrão: Diário)
   const [timeRange, setTimeRange] = useState<TimeRange>('daily');
 
   useEffect(() => {
@@ -111,7 +111,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DO GRÁFICO FILTRADO ---
+  // --- LÓGICA DO GRÁFICO (MODIFICADA) ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
 
@@ -121,7 +121,8 @@ const PatientDashboard: React.FC = () => {
 
     // 1. Aplica o filtro de data
     if (timeRange === 'daily') {
-      const cutoff = subDays(now, 30);
+      // AGORA: "Diário" mostra apenas os últimos 7 DIAS (semana atual)
+      const cutoff = subDays(now, 7); 
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
       dateFormat = 'dd/MM';
     } else if (timeRange === 'weekly') {
@@ -136,7 +137,7 @@ const PatientDashboard: React.FC = () => {
       dateFormat = 'yyyy';
     }
 
-    // 2. Agrupa os dados para tirar a média
+    // 2. Agrupa os dados
     const groups: Record<string, { sum: number; count: number; date: Date }> = {};
 
     filteredLogs.forEach(log => {
@@ -235,11 +236,11 @@ const PatientDashboard: React.FC = () => {
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-primary" /> {/* Ícone que faltava */}
+                  <BarChart3 className="w-4 h-4 text-primary" />
                   Evolução da Intensidade
                 </h3>
                 
-                {/* BOTÕES DE FILTRO */}
+                {/* BOTÕES DE FILTRO ATUALIZADOS */}
                 <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
                   {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
                     <button
@@ -251,7 +252,8 @@ const PatientDashboard: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {range === 'daily' && '30 Dias'}
+                      {/* AQUI ESTÁ A MUDANÇA NO NOME 👇 */}
+                      {range === 'daily' && 'Diário'}
                       {range === 'weekly' && 'Semanal'}
                       {range === 'monthly' && 'Mensal'}
                       {range === 'yearly' && 'Anual'}
