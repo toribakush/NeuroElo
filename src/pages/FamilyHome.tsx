@@ -106,4 +106,130 @@ const FamilyHome: React.FC = () => {
       const gen = async () => {
         const code = Math.random().toString(36).substring(2, 7).toUpperCase();
         await supabase.from('profiles').update({ connection_code: code }).eq('id', user?.id);
-        query
+        queryClient.invalidateQueries({ queryKey: ['my_profile'] });
+      };
+      gen();
+    }
+  }, [profile]);
+
+  const handleCopyCode = () => {
+    if (profile?.connection_code) {
+      navigator.clipboard.writeText(profile.connection_code);
+      setCopied(true);
+      toast({ title: 'Copiado!' });
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header */}
+      <header className="p-6 pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Olá, {user?.name?.split(' ')[0] || 'Família'}</h1>
+            <p className="text-sm text-muted-foreground">Seu resumo de hoje</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={signOut}><LogOut className="w-5 h-5" /></Button>
+        </div>
+      </header>
+
+      <main className="px-6 space-y-4">
+        
+        {/* Código de Conexão */}
+        {profile?.connection_code && (
+          <div className="flex items-center justify-between bg-muted/50 p-3 rounded-xl border border-dashed border-muted-foreground/30">
+             <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase">Seu Código:</span>
+                <span className="font-mono font-bold text-lg tracking-wider text-foreground">{profile.connection_code}</span>
+             </div>
+             <Button variant="ghost" size="sm" onClick={handleCopyCode} className="h-8 w-8 p-0">
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+             </Button>
+          </div>
+        )}
+
+        {/* --- CARDS DE INSIGHTS --- */}
+        {insights ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-blue-50/50 border-blue-100">
+              <insights.PeriodIcon className="w-8 h-8 text-blue-500 mb-2" />
+              <p className="text-xs text-muted-foreground">Pior Período</p>
+              <p className="text-lg font-bold text-blue-700">{insights.periodText}</p>
+            </div>
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-orange-50/50 border-orange-100">
+              <AlertCircle className="w-8 h-8 text-orange-500 mb-2" />
+              <p className="text-xs text-muted-foreground">Principal Gatilho</p>
+              <p className="text-lg font-bold text-orange-700 truncate w-full px-2">{insights.topTrigger}</p>
+            </div>
+          </div>
+        ) : (
+          /* Estado vazio ou erro no cálculo */
+          <div className="card-elevated p-6 text-center">
+            <p className="text-sm text-muted-foreground">Registre eventos para ver seus padrões.</p>
+          </div>
+        )}
+
+        {/* --- VISUAL DE BLOCOS (HEATMAP) --- */}
+        {insights && (
+          <div className="card-elevated p-4">
+             <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Intensidade Semanal</h3>
+                <span className="text-[10px] text-muted-foreground">Madrugada → Noite</span>
+             </div>
+             <div className="flex justify-between">
+                {DAYS_OF_WEEK.map((day, dIdx) => (
+                  <div key={dIdx} className="flex flex-col gap-1 items-center">
+                    {[0, 1, 2, 3].map((block) => {
+                      // Soma 6h por bloco de forma segura
+                      let count = 0;
+                      if (insights.matrix && insights.matrix[dIdx]) {
+                        for(let h=0; h<6; h++) {
+                           const val = insights.matrix[dIdx][(block*6)+h];
+                           if (typeof val === 'number') count += val;
+                        }
+                      }
+                      
+                      return (
+                        <div 
+                          key={block}
+                          className={`w-8 h-6 rounded-sm ${count > 0 ? 'bg-red-400' : 'bg-gray-100'}`}
+                          style={{ opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 }}
+                        />
+                      );
+                    })}
+                    <span className="text-[10px] text-muted-foreground mt-1">{day}</span>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        {/* Lista Recente */}
+        <div>
+          <h2 className="text-base font-semibold mb-3 ml-1">Últimos Registros</h2>
+          <div className="space-y-2">
+            {events.slice(0, 3).map((event: any) => (
+              <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm">
+                <div className={`w-2 h-2 rounded-full ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
+                <div className="flex-1 min-w-0">
+                   <div className="flex justify-between">
+                      <span className="font-medium text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {event.date ? format(new Date(event.date), 'dd/MM HH:mm') : '-'}
+                      </span>
+                   </div>
+                   {event.notes && <p className="text-xs text-muted-foreground truncate">{event.notes}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      <button onClick={() => navigate('/log-event')} className="fab"><Plus className="w-8 h-8" /></button>
+    </div>
+  );
+};
+
+export default FamilyHome;
