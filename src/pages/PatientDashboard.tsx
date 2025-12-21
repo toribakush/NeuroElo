@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Info, MapPin } from 'lucide-react'; // Adicionei MapPin
-import { format } from 'date-fns';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { ArrowLeft, Loader2, Info, MapPin, Calendar, BarChart3 } from 'lucide-react';
+import { format, startOfWeek, endOfWeek, subDays, subWeeks, subMonths, isSameDay, isSameWeek, isSameMonth, isSameYear } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
+import { Button } from '@/components/ui/button';
 
 const COLORS = ['hsl(215, 45%, 20%)', 'hsl(158, 40%, 45%)', 'hsl(32, 75%, 55%)', 'hsl(12, 60%, 55%)', 'hsl(280, 45%, 55%)', 'hsl(210, 20%, 70%)'];
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+type TimeRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 const PatientDashboard: React.FC = () => {
   const { patientId } = useParams();
@@ -17,13 +21,15 @@ const PatientDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [patientName, setPatientName] = useState("");
   const [logs, setLogs] = useState<any[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  
+  // Estados dos gráficos
   const [triggerStats, setTriggerStats] = useState<any[]>([]);
   const [heatmapData, setHeatmapData] = useState<number[][]>([]); 
   const [maxCrisisCount, setMaxCrisisCount] = useState(0);
-  
-  // NOVO: Estado para estatísticas de Local
   const [locationStats, setLocationStats] = useState<any[]>([]);
+
+  // NOVO: Estado do Filtro de Tempo
+  const [timeRange, setTimeRange] = useState<TimeRange>('daily');
 
   useEffect(() => {
     if (patientId) fetchPatientData();
@@ -40,13 +46,13 @@ const PatientDashboard: React.FC = () => {
         .from('daily_logs')
         .select('*')
         .eq('user_id', patientId)
-        .order('date', { ascending: true });
+        .order('date', { ascending: true }); // Importante: ordem cronológica
 
       if (error) throw error;
 
       if (dailyLogs) {
         setLogs(dailyLogs);
-        processCharts(dailyLogs);
+        processStaticCharts(dailyLogs);
       }
 
     } catch (error) {
@@ -56,16 +62,9 @@ const PatientDashboard: React.FC = () => {
     }
   };
 
-  const processCharts = (data: any[]) => {
-    // A. Linha (Intensidade)
-    const lineData = data.map(log => ({
-      label: format(new Date(log.date), 'dd/MM'),
-      intensity: log.intensity,
-      fullDate: log.date
-    }));
-    setChartData(lineData);
-
-    // B. Pizza (Gatilhos)
+  // Processa gráficos que NÃO mudam com o filtro de tempo (Heatmap, Pizza, Ranking)
+  const processStaticCharts = (data: any[]) => {
+    // 1. Gatilhos (Pizza)
     const triggerCounts: Record<string, number> = {};
     let totalTriggers = 0;
     data.forEach(log => {
@@ -80,46 +79,104 @@ const PatientDashboard: React.FC = () => {
       .map(([key, value]) => ({ trigger: key, count: value, percentage: Math.round((value / totalTriggers) * 100) }))
       .sort((a, b) => b.count - a.count));
 
-    // C. Heatmap
+    // 2. Heatmap
     const matrix = Array(7).fill(0).map(() => Array(24).fill(0));
     let maxCount = 0;
     data.forEach(log => {
       if (log.mood === 'crise') {
         const d = new Date(log.date);
-        const day = d.getDay();
-        const hour = d.getHours();
-        matrix[day][hour]++;
-        if (matrix[day][hour] > maxCount) maxCount = matrix[day][hour];
+        matrix[d.getDay()][d.getHours()]++;
+        if (matrix[d.getDay()][d.getHours()] > maxCount) maxCount = matrix[d.getDay()][d.getHours()];
       }
     });
     setHeatmapData(matrix);
     setMaxCrisisCount(maxCount);
 
-    // D. NOVO: Ranking de Locais (Considerando apenas crises)
+    // 3. Ranking de Locais
     const locationCounts: Record<string, number> = {};
     let totalCrisesWithLocation = 0;
-
     data.forEach(log => {
-      // Filtra apenas crises que tenham local preenchido
       if (log.mood === 'crise' && log.location) {
-        // Normaliza o texto (ex: "casa" virar "Casa")
         const loc = log.location.trim(); 
         locationCounts[loc] = (locationCounts[loc] || 0) + 1;
         totalCrisesWithLocation++;
       }
     });
-
     const locStats = Object.entries(locationCounts)
       .map(([loc, count]) => ({
         location: loc,
         count: count,
         percentage: totalCrisesWithLocation > 0 ? Math.round((count / totalCrisesWithLocation) * 100) : 0
       }))
-      .sort((a, b) => b.count - a.count) // Ordena do maior para o menor
-      .slice(0, 5); // Pega o Top 5
-
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
     setLocationStats(locStats);
   };
+
+  // --- LÓGICA DINÂMICA DO GRÁFICO DE LINHA ---
+  const chartData = useMemo(() => {
+    if (logs.length === 0) return [];
+
+    const now = new Date();
+    let filteredLogs = logs;
+    let dateFormat = 'dd/MM';
+
+    // 1. Filtrar período
+    if (timeRange === 'daily') {
+      // Últimos 30 dias
+      const cutoff = subDays(now, 30);
+      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
+      dateFormat = 'dd/MM';
+    } else if (timeRange === 'weekly') {
+      // Últimas 12 semanas
+      const cutoff = subWeeks(now, 12);
+      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
+      dateFormat = 'dd/MM'; // Será data do início da semana
+    } else if (timeRange === 'monthly') {
+      // Últimos 12 meses
+      const cutoff = subMonths(now, 12);
+      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
+      dateFormat = 'MMM/yy';
+    } else {
+      // Anual (tudo)
+      dateFormat = 'yyyy';
+    }
+
+    // 2. Agrupar dados
+    const groups: Record<string, { sum: number; count: number; date: Date }> = {};
+
+    filteredLogs.forEach(log => {
+      const date = new Date(log.date);
+      let key = '';
+
+      if (timeRange === 'daily') {
+        key = format(date, 'yyyy-MM-dd');
+      } else if (timeRange === 'weekly') {
+        // Agrupa pelo início da semana
+        const start = startOfWeek(date, { weekStartsOn: 0 });
+        key = format(start, 'yyyy-MM-dd'); 
+      } else if (timeRange === 'monthly') {
+        key = format(date, 'yyyy-MM');
+      } else {
+        key = format(date, 'yyyy');
+      }
+
+      if (!groups[key]) {
+        groups[key] = { sum: 0, count: 0, date: date };
+      }
+      groups[key].sum += (log.intensity || 0);
+      groups[key].count += 1;
+    });
+
+    // 3. Formatar para o gráfico
+    return Object.values(groups).map(group => ({
+      label: format(group.date, dateFormat, { locale: ptBR }),
+      intensity: Number((group.sum / group.count).toFixed(1)), // Média
+      rawDate: group.date
+    })).sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
+
+  }, [logs, timeRange]);
+
 
   const getHeatmapColor = (count: number) => {
     if (count === 0) return 'bg-gray-100';
@@ -136,19 +193,19 @@ const PatientDashboard: React.FC = () => {
           <ArrowLeft className="w-5 h-5" /><span>Voltar</span>
         </button>
         <h1 className="text-2xl font-bold text-foreground mt-4">{patientName}</h1>
-        <p className="text-muted-foreground">Análise detalhada de comportamento</p>
+        <p className="text-muted-foreground">Painel Clínico</p>
       </header>
 
       <main className="px-6 space-y-6">
         
-        {/* Heatmap */}
+        {/* Heatmap (Não muda com filtro) */}
         <div className="card-elevated p-4 overflow-hidden">
           <div className="flex items-center gap-2 mb-4">
-            <h3 className="font-semibold text-foreground">Mapa de Calor: Horários de Crise</h3>
+            <h3 className="font-semibold text-foreground">Horários de Crise</h3>
             <div className="group relative">
                <Info className="w-4 h-4 text-muted-foreground cursor-help"/>
                <span className="absolute left-6 top-0 w-48 text-xs bg-black text-white p-2 rounded hidden group-hover:block z-10">
-                 Quanto mais vermelho, mais crises ocorreram nesse dia e horário.
+                 Mapa de calor de todas as crises registradas.
                </span>
             </div>
           </div>
@@ -169,7 +226,7 @@ const PatientDashboard: React.FC = () => {
                     >
                       {count > 0 && (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black text-white text-xs rounded hidden group-hover:block whitespace-nowrap z-20 shadow-lg">
-                          {count} crise(s) às {hourIndex}h
+                          {count} crise(s)
                         </div>
                       )}
                     </div>
@@ -181,22 +238,74 @@ const PatientDashboard: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Intensity Chart */}
+            
+            {/* GRÁFICO DE INTENSIDADE COM FILTRO */}
             <div className="card-elevated p-4">
-              <h3 className="font-semibold text-foreground mb-4">Evolução da Intensidade</h3>
-              <div className="h-48">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                <h3 className="font-semibold text-foreground flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  Evolução da Intensidade
+                </h3>
+                
+                {/* Botões de Filtro */}
+                <div className="flex bg-secondary/30 p-1 rounded-lg">
+                  {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
+                    <button
+                      key={range}
+                      onClick={() => setTimeRange(range)}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                        timeRange === range 
+                          ? 'bg-background text-foreground shadow-sm' 
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {range === 'daily' && '30 Dias'}
+                      {range === 'weekly' && 'Semanal'}
+                      {range === 'monthly' && 'Mensal'}
+                      {range === 'yearly' && 'Anual'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                    <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="intensity" stroke="hsl(215, 45%, 20%)" strokeWidth={2} dot={{ r: 3 }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="label" 
+                      tick={{ fontSize: 10, fill: '#6b7280' }} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis 
+                      domain={[0, 10]} 
+                      tick={{ fontSize: 10, fill: '#6b7280' }} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      label={{ value: 'Intensidade Média', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#9ca3af' } }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="intensity" 
+                      stroke="hsl(215, 45%, 20%)" 
+                      strokeWidth={2} 
+                      dot={{ r: 3, fill: 'hsl(215, 45%, 20%)' }} 
+                      activeDot={{ r: 6 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              <p className="text-xs text-center text-muted-foreground mt-2">
+                *Mostra a média de intensidade dos eventos no período.
+              </p>
             </div>
 
-            {/* NOVO: RANKING DE LOCAIS */}
+            {/* Ranking de Locais */}
             <div className="card-elevated p-4">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-primary" />
@@ -229,10 +338,10 @@ const PatientDashboard: React.FC = () => {
             </div>
         </div>
 
-        {/* Triggers Pie Chart */}
+        {/* Triggers & Logs (Mantido igual) */}
         {triggerStats.length > 0 && (
           <div className="card-elevated p-4">
-            <h3 className="font-semibold text-foreground mb-4">Principais Gatilhos</h3>
+            <h3 className="font-semibold text-foreground mb-4">Gatilhos</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -254,9 +363,9 @@ const PatientDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Logs List */}
+        {/* Lista de Registros */}
         <div>
-          <h3 className="font-semibold text-foreground mb-4">Histórico Completo</h3>
+          <h3 className="font-semibold text-foreground mb-4">Histórico Recente</h3>
           <div className="space-y-3">
             {[...logs].reverse().slice(0, 20).map((event) => (
               <div key={event.id} className="card-elevated p-4">
@@ -271,15 +380,12 @@ const PatientDashboard: React.FC = () => {
                         {format(new Date(event.date), 'dd/MM HH:mm')}
                       </span>
                     </div>
-                    
-                    {/* Exibe o Local na lista também */}
                     {event.location && (
                          <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
                             <MapPin className="w-3 h-3" />
                             {event.location}
                          </div>
                     )}
-
                     <div className="flex justify-between items-center mt-1">
                         <p className="text-sm text-muted-foreground">{event.notes}</p>
                         {event.intensity && <span className="text-xs font-bold bg-slate-100 px-2 rounded">Nível {event.intensity}</span>}
