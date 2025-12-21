@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
-import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise, Trash2 } from 'lucide-react'; // <--- Adicionei Trash2
+import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise, Trash2, Pill, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +18,7 @@ const FamilyHome: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false); // Estado para evitar cliques duplos
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 1. Busca Perfil
   const { data: profile } = useQuery({
@@ -50,7 +50,6 @@ const FamilyHome: React.FC = () => {
     if (!events || events.length === 0) return null;
 
     try {
-      // A. Período
       let morning = 0, afternoon = 0, night = 0;
       events.forEach((e: any) => {
         if (!e.date) return;
@@ -74,7 +73,6 @@ const FamilyHome: React.FC = () => {
         periodText = "Noite"; PeriodIcon = Moon; iconColor = "#3b82f6"; 
       }
 
-      // B. Gatilho Top
       const triggers: Record<string, number> = {};
       events.forEach((e: any) => {
         if (Array.isArray(e.triggers)) {
@@ -84,7 +82,6 @@ const FamilyHome: React.FC = () => {
       const topTriggerEntry = Object.entries(triggers).sort((a, b) => b[1] - a[1])[0];
       const topTrigger = topTriggerEntry ? (TRIGGER_LABELS[topTriggerEntry[0] as keyof typeof TRIGGER_LABELS] || topTriggerEntry[0]) : '-';
 
-      // C. Matriz de Calor
       const matrix = Array(7).fill(0).map(() => Array(24).fill(0));
       events.forEach((log: any) => {
          if (!log.date) return;
@@ -102,7 +99,6 @@ const FamilyHome: React.FC = () => {
     }
   }, [events]);
 
-  // Lógica Código
   useEffect(() => {
     if (profile && !profile.connection_code) {
       const gen = async () => {
@@ -112,7 +108,7 @@ const FamilyHome: React.FC = () => {
       };
       gen();
     }
-  }, [profile]);
+  }, [profile, user?.id, queryClient]);
 
   const handleCopyCode = () => {
     if (profile?.connection_code) {
@@ -123,7 +119,6 @@ const FamilyHome: React.FC = () => {
     }
   };
 
-  // --- NOVA FUNÇÃO DE EXCLUIR ---
   const handleDelete = async (id: string) => {
     if (!window.confirm("Tem certeza que deseja excluir este registro?")) return;
     
@@ -133,7 +128,6 @@ const FamilyHome: React.FC = () => {
       if (error) throw error;
       
       toast({ title: "Registro excluído" });
-      // Atualiza a lista automaticamente
       queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
     } catch (error) {
       toast({ title: "Erro ao excluir", variant: "destructive" });
@@ -144,7 +138,6 @@ const FamilyHome: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
       <header className="p-6 pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -157,7 +150,6 @@ const FamilyHome: React.FC = () => {
 
       <main className="px-6 space-y-4">
         
-        {/* Código */}
         {profile?.connection_code && (
           <div className="flex items-center justify-between bg-muted/50 p-3 rounded-xl border border-dashed border-muted-foreground/30">
              <div className="flex items-center gap-2">
@@ -170,24 +162,15 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* --- CARDS DE INSIGHTS --- */}
         {insights ? (
           <div className="grid grid-cols-2 gap-3">
-            {/* Card Período */}
-            <div 
-              className="card-elevated p-4 flex flex-col items-center justify-center text-center"
-              style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}
-            >
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
               <insights.PeriodIcon className="w-8 h-8 mb-2" style={{ color: insights.iconColor }} />
               <p className="text-xs text-gray-500">Pior Período</p>
               <p className="text-lg font-bold" style={{ color: insights.iconColor }}>{insights.periodText}</p>
             </div>
 
-            {/* Card Gatilho */}
-            <div 
-              className="card-elevated p-4 flex flex-col items-center justify-center text-center"
-              style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }}
-            >
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center" style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }}>
               <AlertCircle className="w-8 h-8 mb-2" style={{ color: '#f97316' }} />
               <p className="text-xs text-gray-500">Principal Gatilho</p>
               <p className="text-lg font-bold" style={{ color: '#c2410c' }}>{insights.topTrigger}</p>
@@ -199,7 +182,22 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* --- VISUAL DE BLOCOS --- */}
+        <button 
+          onClick={() => navigate('/medications')}
+          className="w-full card-elevated p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 text-purple-600 rounded-full">
+              <Pill className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-foreground text-sm">Medicamentos</p>
+              <p className="text-xs text-muted-foreground">Gerenciar receitas e doses</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+        </button>
+
         {insights && (
           <div className="card-elevated p-4">
              <div className="flex items-center justify-between mb-3">
@@ -217,16 +215,8 @@ const FamilyHome: React.FC = () => {
                            if (typeof val === 'number') count += val;
                         }
                       }
-                      
                       return (
-                        <div 
-                          key={block}
-                          className="w-8 h-6 rounded-sm transition-all"
-                          style={{ 
-                            backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', 
-                            opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 
-                          }}
-                        />
+                        <div key={block} className="w-8 h-6 rounded-sm transition-all" style={{ backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 }} />
                       );
                     })}
                     <span className="text-[10px] text-muted-foreground mt-1">{day}</span>
@@ -236,33 +226,20 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* Lista Recente com botão de EXCLUIR */}
         <div>
           <h2 className="text-base font-semibold mb-3 ml-1">Últimos Registros</h2>
           <div className="space-y-2">
             {events.slice(0, 5).map((event: any) => (
               <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm group">
-                {/* Bolinha Colorida */}
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
-                
-                {/* Conteúdo */}
                 <div className="flex-1 min-w-0">
                    <div className="flex justify-between items-center">
                       <span className="font-medium text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {event.date ? format(new Date(event.date), 'dd/MM HH:mm') : '-'}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{event.date ? format(new Date(event.date), 'dd/MM HH:mm') : '-'}</span>
                    </div>
                    {event.notes && <p className="text-xs text-muted-foreground truncate">{event.notes}</p>}
                 </div>
-
-                {/* Botão de Lixeira (Discreto) */}
-                <button 
-                  onClick={() => handleDelete(event.id)}
-                  className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-70 hover:opacity-100"
-                  disabled={isDeleting}
-                  title="Excluir registro"
-                >
+                <button onClick={() => handleDelete(event.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-70 hover:opacity-100" disabled={isDeleting}>
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
