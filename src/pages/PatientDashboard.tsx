@@ -1,26 +1,20 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Info, MapPin, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, MapPin, BarChart3, Pill, Plus, Trash2, Save } from 'lucide-react';
 import { format, startOfWeek, subWeeks, subMonths, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
 
-const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const COLORS = ['hsl(215, 45%, 20%)', 'hsl(158, 40%, 45%)', 'hsl(32, 75%, 55%)', 'hsl(12, 60%, 55%)', 'hsl(280, 45%, 55%)', 'hsl(210, 20%, 70%)'];
-
-// CORES PARA AS BOLINHAS E HEATMAP
+// Cores para os eventos no gráfico
 const MOOD_COLORS: Record<string, string> = {
-  bom_dia: '#22c55e',   // Verde
-  ansiedade: '#f97316', // Laranja
-  crise: '#ef4444',     // Vermelho
-  meltdown: '#a855f7',  // Roxo
-  default: '#1e293b'    // Azul Escuro
+  bom_dia: '#22c55e',
+  ansiedade: '#f97316',
+  crise: '#ef4444',
+  meltdown: '#a855f7',
+  default: '#1e293b'
 };
-
-type TimeRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 const PatientDashboard: React.FC = () => {
   const { patientId } = useParams();
@@ -29,34 +23,38 @@ const PatientDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [patientName, setPatientName] = useState("");
   const [logs, setLogs] = useState<any[]>([]);
+  const [meds, setMeds] = useState<any[]>([]);
   
+  // Estados para gerenciar a adição de medicamentos
+  const [newMedName, setNewMedName] = useState('');
+  const [newMedDose, setNewMedDose] = useState('');
+  const [newMedTime, setNewMedTime] = useState('');
+  const [isSavingMed, setIsSavingMed] = useState(false);
+
   const [triggerStats, setTriggerStats] = useState<any[]>([]);
   const [heatmapData, setHeatmapData] = useState<string[][][]>([]); 
   const [locationStats, setLocationStats] = useState<any[]>([]);
-
-  const [timeRange, setTimeRange] = useState<TimeRange>('daily');
+  const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
 
   useEffect(() => {
-    if (patientId) fetchPatientData();
+    if (patientId) fetchAllData();
   }, [patientId]);
 
-  const fetchPatientData = async () => {
+  const fetchAllData = async () => {
     try {
       setLoading(true);
-      const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', patientId).single();
-      if (profile) setPatientName(profile.full_name || profile.email || "Paciente");
+      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', patientId).single();
+      if (profile) setPatientName(profile.full_name || "Paciente");
 
-      const { data: dailyLogs, error } = await supabase
-        .from('daily_logs')
-        .select('*')
-        .eq('user_id', patientId)
-        .order('date', { ascending: true });
-
-      if (error) throw error;
+      const { data: dailyLogs } = await supabase.from('daily_logs').select('*').eq('user_id', patientId).order('date', { ascending: true });
       if (dailyLogs) {
         setLogs(dailyLogs);
         processStaticCharts(dailyLogs);
       }
+
+      const { data: medications } = await supabase.from('medications').select('*').eq('user_id', patientId).order('created_at', { ascending: false });
+      if (medications) setMeds(medications);
+
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -65,22 +63,7 @@ const PatientDashboard: React.FC = () => {
   };
 
   const processStaticCharts = (data: any[]) => {
-    // 1. Gatilhos
-    const triggerCounts: Record<string, number> = {};
-    let totalTriggers = 0;
-    data.forEach(log => {
-      if (log.triggers && Array.isArray(log.triggers)) {
-        log.triggers.forEach((t: string) => {
-          triggerCounts[t] = (triggerCounts[t] || 0) + 1;
-          totalTriggers++;
-        });
-      }
-    });
-    setTriggerStats(Object.entries(triggerCounts)
-      .map(([key, value]) => ({ trigger: key, count: value, percentage: Math.round((value / totalTriggers) * 100) }))
-      .sort((a, b) => b.count - a.count));
-
-    // 2. Heatmap
+    // Mapa de Calor
     const matrix: string[][][] = Array(7).fill(0).map(() => Array(24).fill(0).map(() => []));
     data.forEach(log => {
       const d = new Date(log.date);
@@ -88,99 +71,74 @@ const PatientDashboard: React.FC = () => {
     });
     setHeatmapData(matrix);
 
-    // 3. Ranking de Locais
-    const locationCounts: Record<string, number> = {};
-    let totalCrisesWithLocation = 0;
+    // Gatilhos
+    const triggerCounts: Record<string, number> = {};
+    let totalTriggers = 0;
     data.forEach(log => {
-      if (log.mood === 'crise' && log.location) {
-        const loc = log.location.trim(); 
-        locationCounts[loc] = (locationCounts[loc] || 0) + 1;
-        totalCrisesWithLocation++;
+      if (log.triggers) {
+        log.triggers.forEach((t: string) => {
+          triggerCounts[t] = (triggerCounts[t] || 0) + 1;
+          totalTriggers++;
+        });
       }
     });
-    const locStats = Object.entries(locationCounts)
-      .map(([loc, count]) => ({
-        location: loc,
-        count: count,
-        percentage: totalCrisesWithLocation > 0 ? Math.round((count / totalCrisesWithLocation) * 100) : 0
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-    setLocationStats(locStats);
+    setTriggerStats(Object.entries(triggerCounts).map(([key, value]) => ({ trigger: key, count: value, percentage: Math.round((value / totalTriggers) * 100) })).sort((a, b) => b.count - a.count));
+
+    // Locais de Crise
+    const locationCounts: Record<string, number> = {};
+    let totalCrises = 0;
+    data.forEach(log => {
+      if (log.mood === 'crise' && log.location) {
+        locationCounts[log.location] = (locationCounts[log.location] || 0) + 1;
+        totalCrises++;
+      }
+    });
+    setLocationStats(Object.entries(locationCounts).map(([loc, count]) => ({ location: loc, count, percentage: totalCrises > 0 ? Math.round((count / totalCrises) * 100) : 0 })).sort((a, b) => b.count - a.count).slice(0, 5));
   };
 
-  // --- CHART DATA ---
+  const handleAddMed = async () => {
+    if (!newMedName) return;
+    setIsSavingMed(true);
+    try {
+      const { error } = await supabase.from('medications').insert({
+        user_id: patientId,
+        name: newMedName,
+        dosage: newMedDose,
+        time: newMedTime
+      });
+      if (error) throw error;
+      setNewMedName(''); setNewMedDose(''); setNewMedTime('');
+      fetchAllData();
+    } catch (e) {
+      console.error("Erro ao salvar med:", e);
+    } finally {
+      setIsSavingMed(false);
+    }
+  };
+
+  const handleDeleteMed = async (id: string) => {
+    if (!confirm("Remover este medicamento?")) return;
+    await supabase.from('medications').delete().eq('id', id);
+    fetchAllData();
+  };
+
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
     const now = new Date();
-    let filteredLogs = logs;
-    let dateFormat = 'dd/MM';
-
-    if (timeRange === 'daily') {
-      filteredLogs = logs.filter(l => isSameDay(new Date(l.date), now));
-      dateFormat = 'HH:mm';
-    } else if (timeRange === 'weekly') {
-      const cutoff = subWeeks(now, 12);
-      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
-      dateFormat = 'dd/MM'; 
-    } else if (timeRange === 'monthly') {
-      const cutoff = subMonths(now, 12);
-      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
-      dateFormat = 'MMM';
-    } else {
-      dateFormat = 'yyyy';
-    }
-
-    if (timeRange === 'daily') {
-       return filteredLogs.map(log => ({
-         label: format(new Date(log.date), 'HH:mm'),
-         intensity: log.intensity,
-         rawDate: new Date(log.date),
-         mood: log.mood,
-         notes: log.notes
-       }));
-    }
-
-    const groups: Record<string, { sum: number; count: number; date: Date }> = {};
-    filteredLogs.forEach(log => {
-      const date = new Date(log.date);
-      let key = '';
-      if (timeRange === 'weekly') {
-        const start = startOfWeek(date, { weekStartsOn: 0 });
-        key = format(start, 'yyyy-MM-dd'); 
-      } else if (timeRange === 'monthly') key = format(date, 'yyyy-MM');
-      else key = format(date, 'yyyy');
-
-      if (!groups[key]) groups[key] = { sum: 0, count: 0, date: date };
-      groups[key].sum += (log.intensity || 0);
-      groups[key].count += 1;
-    });
-
-    return Object.values(groups).map(group => ({
-      label: format(group.date, dateFormat, { locale: ptBR }),
-      intensity: Number((group.sum / group.count).toFixed(1)),
-      rawDate: group.date,
-      mood: 'average'
-    })).sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
-
+    let filtered = logs;
+    if (timeRange === 'daily') filtered = logs.filter(l => isSameDay(new Date(l.date), now));
+    
+    return filtered.map(log => ({ 
+      label: format(new Date(log.date), 'HH:mm'), 
+      intensity: log.intensity, 
+      mood: log.mood 
+    }));
   }, [logs, timeRange]);
 
-  // Bolinha Customizada
   const CustomizedDot = (props: any) => {
     const { cx, cy, payload } = props;
-    let fill = MOOD_COLORS.default;
-    if (payload.mood) {
-      if (payload.mood === 'bom_dia') fill = MOOD_COLORS.bom_dia;
-      else if (payload.mood === 'ansiedade') fill = MOOD_COLORS.ansiedade;
-      else if (payload.mood === 'meltdown') fill = MOOD_COLORS.meltdown;
-      else if (payload.mood === 'crise') fill = (payload.intensity && payload.intensity < 5) ? '#f59e0b' : MOOD_COLORS.crise;
-    }
-    return (
-      <svg x={cx - 5} y={cy - 5} width={10} height={10} fill={fill} viewBox="0 0 10 10">
-        <circle cx="5" cy="5" r="5" />
-        <circle cx="5" cy="5" r="4" fill="white" fillOpacity="0.2" />
-      </svg>
-    );
+    const fill = MOOD_COLORS[payload.mood] || MOOD_COLORS.default;
+    return <circle cx={cx} cy={cy} r={5} fill={fill} stroke="white" strokeWidth={1} />;
   };
 
   const getHeatmapColor = (moods: string[]) => {
@@ -195,52 +153,33 @@ const PatientDashboard: React.FC = () => {
   if (loading) return <div className="flex justify-center items-center h-screen"><Loader2 className="animate-spin" /></div>;
 
   return (
-    <div className="min-h-screen bg-background pb-8">
-      <header className="p-6 pb-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+    <div className="min-h-screen bg-slate-50 pb-12">
+      <header className="p-6 bg-white border-b">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors">
           <ArrowLeft className="w-5 h-5" /><span>Voltar</span>
         </button>
-        <h1 className="text-2xl font-bold text-foreground mt-4">{patientName}</h1>
-        <p className="text-muted-foreground">Painel Clínico</p>
+        <h1 className="text-2xl font-bold mt-4 text-slate-900 capitalize">{patientName}</h1>
       </header>
 
-      <main className="px-6 space-y-6">
+      <main className="max-w-5xl mx-auto px-6 space-y-8 mt-8">
         
-        {/* Heatmap */}
-        <div className="card-elevated p-4 overflow-hidden">
-          <div className="flex items-center gap-2 mb-4">
-            <h3 className="font-semibold text-foreground">Mapa de Calor de Eventos</h3>
-            <div className="group relative">
-               <Info className="w-4 h-4 text-muted-foreground cursor-help"/>
-               <span className="absolute left-6 top-0 w-64 text-xs bg-black text-white p-2 rounded hidden group-hover:block z-10">
-                 Cor indica gravidade: Vermelho (Crise) {'>'} Roxo (Meltdown) {'>'} Laranja (Ansiedade) {'>'} Verde (Bom dia).
-               </span>
-            </div>
-          </div>
-          <div className="overflow-x-auto pb-2">
-            <div className="min-w-[600px]">
-              <div className="flex mb-1">
-                <div className="w-10"></div>
-                {HOURS.map(h => <div key={h} className="flex-1 text-[10px] text-center text-muted-foreground">{h}h</div>)}
-              </div>
+        {/* Mapa de Calor */}
+        <div className="bg-white rounded-2xl shadow-sm border p-6 overflow-hidden">
+          <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <Info className="w-4 h-4 text-slate-400" /> Horários de Crise
+          </h3>
+          <div className="overflow-x-auto">
+            <div className="min-w-[600px] space-y-1">
               {heatmapData.map((dayData, dayIndex) => (
-                <div key={dayIndex} className="flex items-center mb-1 h-6">
-                  <div className="w-10 text-[10px] font-medium text-muted-foreground">{DAYS_OF_WEEK[dayIndex]}</div>
+                <div key={dayIndex} className="flex items-center h-6 gap-1">
+                  <div className="w-10 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{DAYS_OF_WEEK[dayIndex]}</div>
                   {dayData.map((moods, hourIndex) => (
                     <div 
                       key={hourIndex} 
-                      className="flex-1 h-full mx-[1px] rounded-sm transition-all relative group"
+                      className="flex-1 h-full rounded-sm" 
                       style={{ backgroundColor: getHeatmapColor(moods) }}
-                    >
-                      {moods.length > 0 && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black text-white text-xs rounded hidden group-hover:block whitespace-nowrap z-20 shadow-lg">
-                          {moods.length} evento(s)
-                          <div className="text-[10px] mt-1 capitalize">
-                            {[...new Set(moods)].map(m => EVENT_TYPE_LABELS[m as keyof typeof EVENT_TYPE_LABELS] || m).join(', ')}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                      title={`${moods.length} eventos`}
+                    />
                   ))}
                 </div>
               ))}
@@ -248,154 +187,61 @@ const PatientDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* GRÁFICO COM GRADIENTE DE COR */}
-            <div className="card-elevated p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-primary" />
-                  Evolução da Intensidade
-                </h3>
-                
-                <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
-                  {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => setTimeRange(range)}
-                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                        timeRange === range 
-                          ? 'bg-white shadow-sm text-primary font-bold' 
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {range === 'daily' && 'Hoje'}
-                      {range === 'weekly' && 'Semanal'}
-                      {range === 'monthly' && 'Mensal'}
-                      {range === 'yearly' && 'Anual'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-64">
-                {chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      {/* DEFINIÇÃO DO GRADIENTE: Verde embaixo, Vermelho em cima */}
-                      <defs>
-                        <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={1}/> {/* Crise (Topo) */}
-                          <stop offset="50%" stopColor="#f97316" stopOpacity={1}/> {/* Ansiedade (Meio) */}
-                          <stop offset="95%" stopColor="#22c55e" stopOpacity={1}/> {/* Bom dia (Baixo) */}
-                        </linearGradient>
-                      </defs>
-
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                      <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      
-                      <Line 
-                        type="monotone" 
-                        dataKey="intensity" 
-                        stroke="url(#colorIntensity)" /* APLICA O GRADIENTE AQUI */
-                        strokeWidth={3} 
-                        dot={<CustomizedDot />}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border-2 border-dashed rounded-xl">
-                    Nenhum registro encontrado para este período.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Ranking de Locais */}
-            <div className="card-elevated p-4">
-                <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    Locais de Risco
-                </h3>
-                {locationStats.length > 0 ? (
-                    <div className="space-y-4">
-                        {locationStats.map((item, index) => (
-                            <div key={index} className="space-y-1">
-                                <div className="flex justify-between text-sm">
-                                    <span className="font-medium text-foreground">{item.location}</span>
-                                    <span className="text-muted-foreground">{item.count} crises ({item.percentage}%)</span>
-                                </div>
-                                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                                    <div className="h-full bg-primary transition-all duration-500" style={{ width: `${item.percentage}%` }} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm py-8 border-2 border-dashed rounded-xl">
-                        <MapPin className="w-8 h-8 mb-2 opacity-50" />
-                        <p>Sem dados de local ainda.</p>
-                    </div>
-                )}
-            </div>
+        {/* Gráfico de Intensidade */}
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+           <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+             <BarChart3 className="w-4 h-4 text-blue-500" /> Evolução Diária (Hoje)
+           </h3>
+           <div className="h-64">
+             <ResponsiveContainer width="100%" height="100%">
+               <LineChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={1}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} />
+                  <YAxis domain={[0, 10]} axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748b'}} />
+                  <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                  <Line type="monotone" dataKey="intensity" stroke="url(#colorIntensity)" strokeWidth={3} dot={<CustomizedDot />} />
+               </LineChart>
+             </ResponsiveContainer>
+           </div>
         </div>
 
-        {/* Gatilhos e Lista (Mantidos) */}
-        {triggerStats.length > 0 && (
-          <div className="card-elevated p-4">
-            <h3 className="font-semibold text-foreground mb-4">Principais Gatilhos</h3>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={triggerStats} dataKey="count" nameKey="trigger" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2}>
-                    {triggerStats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(value, name) => [value, TRIGGER_LABELS[name as keyof typeof TRIGGER_LABELS] || name]} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2 justify-center">
-              {triggerStats.slice(0, 5).map((t, i) => (
-                <span key={t.trigger} className="text-xs flex items-center gap-1 bg-secondary/30 px-2 py-1 rounded-full">
-                  <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  {TRIGGER_LABELS[t.trigger as keyof typeof TRIGGER_LABELS] || t.trigger} ({t.percentage}%)
-                </span>
-              ))}
+        {/* Medicamentos */}
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <div className="flex items-center gap-2 mb-6 text-purple-600">
+            <Pill className="w-5 h-5" />
+            <h3 className="font-bold">Medicamentos e Dosagens</h3>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3 mb-8 bg-purple-50 p-4 rounded-xl border border-purple-100">
+            <input placeholder="Medicamento" className="flex-1 h-10 px-3 rounded-lg border bg-white text-sm" value={newMedName} onChange={e => setNewMedName(e.target.value)} />
+            <input placeholder="Dosagem" className="flex-1 h-10 px-3 rounded-lg border bg-white text-sm" value={newMedDose} onChange={e => setNewMedDose(e.target.value)} />
+            <div className="flex gap-2 flex-1">
+              <input placeholder="Horário" className="flex-1 h-10 px-3 rounded-lg border bg-white text-sm" value={newMedTime} onChange={e => setNewMedTime(e.target.value)} />
+              <button onClick={handleAddMed} disabled={isSavingMed} className="h-10 px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center">
+                {isSavingMed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-5 h-5" />}
+              </button>
             </div>
           </div>
-        )}
 
-        <div>
-          <h3 className="font-semibold text-foreground mb-4">Histórico Completo</h3>
-          <div className="space-y-3">
-            {[...logs].reverse().slice(0, 20).map((event) => (
-              <div key={event.id} className="card-elevated p-4">
-                <div className="flex items-start gap-3">
-                  <div className={`status-dot mt-1.5 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-foreground">
-                        {EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}
-                      </p>
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(event.date), 'dd/MM HH:mm')}
-                      </span>
-                    </div>
-                    {event.location && (
-                         <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
-                            <MapPin className="w-3 h-3" />
-                            {event.location}
-                         </div>
-                    )}
-                    <div className="flex justify-between items-center mt-1">
-                        <p className="text-sm text-muted-foreground">{event.notes}</p>
-                        {event.intensity && <span className="text-xs font-bold bg-slate-100 px-2 rounded">Nível {event.intensity}</span>}
-                    </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {meds.map((med) => (
+              <div key={med.id} className="flex items-center justify-between p-4 border rounded-xl bg-white group hover:border-purple-200 transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm">{med.name}</p>
+                    <p className="text-xs text-slate-500">{med.dosage} • {med.time}</p>
                   </div>
                 </div>
+                <button onClick={() => handleDeleteMed(med.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
