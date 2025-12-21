@@ -16,13 +16,23 @@ const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuth();
-  if (isLoading) return <div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (!user) return <Navigate to="/auth" replace />;
+  
   return <>{children}</>;
 };
 
 const HomeRouter = () => {
   const { user } = useAuth();
+  // Verifica se o papel é profissional ou família
   if (user?.role === 'professional') return <ProfessionalHome />;
   return <FamilyHome />;
 };
@@ -30,11 +40,21 @@ const HomeRouter = () => {
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<Auth />} />
+    
+    {/* Rota Principal (Decide se mostra Home de Médico ou Família) */}
     <Route path="/" element={<ProtectedRoute><HomeRouter /></ProtectedRoute>} />
+    
+    {/* Rota de Registro de Eventos */}
     <Route path="/log-event" element={<ProtectedRoute><LogEvent /></ProtectedRoute>} />
+    
+    {/* Rota do Painel do Paciente (Visão do Médico) */}
     <Route path="/patient/:patientId" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
+    
+    {/* Rota de Medicamentos (AGORA PROTEGIDA) */}
+    <Route path="/medications" element={<ProtectedRoute><Medications /></ProtectedRoute>} />
+    
+    {/* 404 */}
     <Route path="*" element={<NotFound />} />
-    <Route path="/medications" element={<Medications />} />
   </Routes>
 );
 
