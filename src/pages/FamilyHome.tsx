@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
-import { Plus, Calendar, TrendingUp, LogOut, Copy, Check, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Calendar, TrendingUp, LogOut, Copy, Check, Loader2, Sun, Moon, Sunrise, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
-import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from '@/types';
+import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, TRIGGER_LABELS } from '@/types';
+
+// Configuração simples do Heatmap
+const DAYS_OF_WEEK = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const HOURS = [0, 6, 12, 18]; // Simplificado para visualização rápida
 
 const FamilyHome: React.FC = () => {
   const navigate = useNavigate();
@@ -17,7 +21,7 @@ const FamilyHome: React.FC = () => {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
 
-  // --- 1. BUSCA O PERFIL DO USUÁRIO (PARA PEGAR O CÓDIGO) ---
+  // --- 1. DADOS DO PERFIL ---
   const { data: profile } = useQuery({
     queryKey: ['my_profile'],
     queryFn: async () => {
@@ -32,30 +36,7 @@ const FamilyHome: React.FC = () => {
     enabled: !!user?.id
   });
 
-  // --- 2. GERADOR AUTOMÁTICO DE CÓDIGO ---
-  // Se o perfil carregou e o código está vazio, cria um agora mesmo!
-  useEffect(() => {
-    const generateCode = async () => {
-      if (profile && !profile.connection_code) {
-        // Gera código aleatório de 5 digitos (Ex: A1B2C)
-        const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        
-        const { error } = await supabase
-          .from('profiles')
-          .update({ connection_code: newCode })
-          .eq('id', user?.id);
-
-        if (!error) {
-          // Atualiza a tela para mostrar o código novo
-          queryClient.invalidateQueries({ queryKey: ['my_profile'] });
-        }
-      }
-    };
-    generateCode();
-  }, [profile, user?.id, queryClient]);
-
-
-  // --- 3. BUSCA OS REGISTROS DO DIÁRIO ---
+  // --- 2. DADOS DO DIÁRIO ---
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['daily_logs'],
     queryFn: async () => {
@@ -65,43 +46,82 @@ const FamilyHome: React.FC = () => {
         .select('*')
         .eq('user_id', user.id)
         .order('date', { ascending: false });
-
       if (error) throw error;
       return data;
     },
     enabled: !!user?.id,
   });
 
-  // Cálculos
-  const crisisEvents = events.filter((e: any) => e.mood === 'crise');
-  const lastCrisis = crisisEvents[0];
-  const daysWithoutCrisis = lastCrisis 
-    ? Math.floor((Date.now() - new Date(lastCrisis.date).getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
+  // --- 3. CÁLCULO DE INSIGHTS (A MÁGICA SIMPLES) ---
+  const insights = useMemo(() => {
+    if (events.length === 0) return null;
 
-  const recentEvents = events.slice(0, 5);
+    // A. Período do dia mais crítico
+    let morning = 0, afternoon = 0, night = 0;
+    events.forEach((e: any) => {
+      const hour = new Date(e.date).getHours();
+      if (hour >= 6 && hour < 12) morning++;
+      else if (hour >= 12 && hour < 18) afternoon++;
+      else night++;
+    });
+
+    let periodText = "Variado";
+    let PeriodIcon = Sun;
+    if (morning > afternoon && morning > night) { periodText = "Manhã"; PeriodIcon = Sunrise; }
+    if (afternoon > morning && afternoon > night) { periodText = "Tarde"; PeriodIcon = Sun; }
+    if (night > morning && night > afternoon) { periodText = "Noite"; PeriodIcon = Moon; }
+
+    // B. Gatilho mais comum
+    const triggers: Record<string, number> = {};
+    events.forEach((e: any) => {
+      e.triggers?.forEach((t: string) => {
+        triggers[t] = (triggers[t] || 0) + 1;
+      });
+    });
+    const topTrigger = Object.entries(triggers).sort((a, b) => b[1] - a[1])[0];
+    
+    // C. Matriz Simplificada para o visual
+    const matrix = Array(7).fill(0).map(() => Array(24).fill(0));
+    events.forEach((log: any) => {
+       const d = new Date(log.date);
+       matrix[d.getDay()][d.getHours()]++;
+    });
+
+    return { periodText, PeriodIcon, topTrigger, matrix };
+  }, [events]);
+
+
+  // Lógica de gerar código (igual anterior)
+  useEffect(() => {
+    if (profile && !profile.connection_code) {
+      const generate = async () => {
+        const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+        await supabase.from('profiles').update({ connection_code: newCode }).eq('id', user?.id);
+        queryClient.invalidateQueries({ queryKey: ['my_profile'] });
+      };
+      generate();
+    }
+  }, [profile]);
 
   const handleCopyCode = () => {
     if (profile?.connection_code) {
       navigator.clipboard.writeText(profile.connection_code);
       setCopied(true);
-      toast({ title: 'Código copiado!' });
+      toast({ title: 'Copiado!' });
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="p-6 pb-4">
+      {/* Header Simplificado */}
+      <header className="p-6 pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-muted-foreground text-sm">
-              {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
-            </p>
-            <h1 className="text-2xl font-bold text-foreground mt-1">
+            <h1 className="text-2xl font-bold text-foreground">
               Olá, {user?.name?.split(' ')[0] || 'Família'}
             </h1>
+            <p className="text-sm text-muted-foreground">Vamos ver como você está hoje?</p>
           </div>
           <Button variant="ghost" size="icon" onClick={signOut}>
             <LogOut className="w-5 h-5" />
@@ -109,93 +129,110 @@ const FamilyHome: React.FC = () => {
         </div>
       </header>
 
-      <main className="px-6 space-y-6">
+      <main className="px-6 space-y-5">
         
-        {/* Connection Code - AGORA VAI APARECER SEMPRE */}
-        <div className="card-elevated p-4 border-l-4 border-l-primary">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-bold">Seu Código de Conexão</p>
-                {profile?.connection_code ? (
-                  <p className="text-3xl font-mono font-bold text-foreground mt-1 tracking-wider">
-                    {profile.connection_code}
-                  </p>
-                ) : (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Gerando código...
-                  </div>
-                )}
-              </div>
-              <Button variant="outline" size="icon" onClick={handleCopyCode} disabled={!profile?.connection_code}>
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Envie este código para o seu médico/terapeuta monitorar.
-            </p>
-        </div>
+        {/* Código de Conexão (Compacto) */}
+        {profile?.connection_code && (
+          <div className="flex items-center justify-between bg-muted/50 p-3 rounded-xl border border-dashed border-muted-foreground/30">
+             <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase">Seu Código:</span>
+                <span className="font-mono font-bold text-lg tracking-wider text-foreground">{profile.connection_code}</span>
+             </div>
+             <Button variant="ghost" size="sm" onClick={handleCopyCode} className="h-8 w-8 p-0">
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+             </Button>
+          </div>
+        )}
 
-        {/* Streak Card */}
-        <div className="card-elevated p-6 gradient-sage text-accent-foreground">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-90">Dias sem crise severa</p>
-              <p className="text-5xl font-bold mt-1">
-                {isLoading ? '-' : daysWithoutCrisis}
+        {/* 1. RESUMO INTELIGENTE (NOVO) */}
+        {insights ? (
+          <div className="grid grid-cols-2 gap-3">
+            {/* Card Período */}
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
+              <insights.PeriodIcon className="w-8 h-8 text-blue-500 mb-2" />
+              <p className="text-xs text-muted-foreground">Período mais ativo</p>
+              <p className="text-lg font-bold text-blue-700 dark:text-blue-300">{insights.periodText}</p>
+            </div>
+
+            {/* Card Gatilho */}
+            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-orange-50/50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900">
+              <AlertCircle className="w-8 h-8 text-orange-500 mb-2" />
+              <p className="text-xs text-muted-foreground">Principal Gatilho</p>
+              <p className="text-lg font-bold text-orange-700 dark:text-orange-300">
+                {insights.topTrigger ? (TRIGGER_LABELS[insights.topTrigger[0] as keyof typeof TRIGGER_LABELS] || insights.topTrigger[0]) : '-'}
               </p>
             </div>
-            <Calendar className="w-12 h-12 opacity-50" />
+          </div>
+        ) : (
+          <div className="card-elevated p-6 text-center">
+            <p className="text-sm text-muted-foreground">Faça seu primeiro registro para ver seus resumos!</p>
+          </div>
+        )}
+
+        {/* 2. MAPA DE CALOR VISUAL (SIMPLIFICADO) */}
+        {insights && (
+          <div className="card-elevated p-4">
+             <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Visão da Semana</h3>
+                <span className="text-[10px] bg-secondary px-2 py-1 rounded text-muted-foreground">Vermelho = Mais intenso</span>
+             </div>
+             
+             {/* Visualização de "Pixels" */}
+             <div className="flex justify-between">
+                {DAYS_OF_WEEK.map((dayLabel, dIndex) => (
+                  <div key={dIndex} className="flex flex-col gap-1 items-center">
+                    {/* Blocos do dia (agrupados em 4 turnos para simplificar) */}
+                    {[0, 1, 2, 3].map((block) => {
+                      // Soma simplificada de 6 horas por bloco
+                      let count = 0;
+                      for(let h=0; h<6; h++) count += insights.matrix[dIndex][(block*6)+h];
+                      
+                      return (
+                        <div 
+                          key={block}
+                          className={`w-8 h-6 rounded-sm transition-all ${count > 0 ? 'bg-red-400' : 'bg-gray-100 dark:bg-gray-800'}`}
+                          style={{ opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 }}
+                        />
+                      );
+                    })}
+                    <span className="text-[10px] font-medium text-muted-foreground mt-1">{dayLabel}</span>
+                  </div>
+                ))}
+             </div>
+             {/* Legenda Lateral (Turnos) */}
+             <div className="absolute left-2 top-[88px] flex flex-col gap-[18px] text-[8px] text-muted-foreground opacity-0">
+               <span>Madru.</span><span>Manhã</span><span>Tarde</span><span>Noite</span>
+             </div>
+          </div>
+        )}
+
+        {/* 3. LISTA RECENTE (Compacta) */}
+        <div>
+          <h2 className="text-base font-semibold mb-3 ml-1">Últimos Registros</h2>
+          <div className="space-y-2">
+            {events.slice(0, 3).map((event: any) => (
+              <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm">
+                <div className={`w-2 h-2 rounded-full ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
+                <div className="flex-1">
+                   <div className="flex justify-between">
+                      <span className="font-medium text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</span>
+                      <span className="text-xs text-muted-foreground">{format(new Date(event.date), 'dd/MM HH:mm')}</span>
+                   </div>
+                   {event.notes && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{event.notes}</p>}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Recent Events */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Registros Recentes</h2>
-            <Button variant="ghost" size="sm" className="text-muted-foreground">
-              Ver todos <TrendingUp className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-          
-          <div className="space-y-3">
-            {isLoading ? (
-              <div className="flex justify-center py-4"><Loader2 className="animate-spin text-muted-foreground" /></div>
-            ) : recentEvents.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">Toque no + para criar seu primeiro registro.</p>
-            ) : (
-              recentEvents.map((event: any) => (
-                <div key={event.id} className="card-elevated p-4">
-                  <div className="flex items-start gap-3">
-                    <div className={`status-dot mt-1.5 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-foreground">
-                          {EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}
-                        </p>
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(event.date), 'dd/MM HH:mm')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center mt-1">
-                         <p className="text-sm text-muted-foreground truncate pr-2">{event.notes}</p>
-                         {event.intensity && (
-                           <span className="text-xs font-bold bg-slate-100 px-2 rounded whitespace-nowrap">
-                             Nível {event.intensity}
-                           </span>
-                         )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
       </main>
 
-      {/* FAB */}
-      <button onClick={() => navigate('/log-event')} className="fab">
-        <Plus className="w-7 h-7" />
+      {/* Botão Flutuante (FAB) */}
+      <button 
+        onClick={() => navigate('/log-event')} 
+        className="fab animate-in zoom-in duration-300"
+      >
+        <Plus className="w-8 h-8" />
       </button>
     </div>
   );
