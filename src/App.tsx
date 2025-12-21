@@ -10,6 +10,7 @@ import ProfessionalHome from "./pages/ProfessionalHome";
 import LogEvent from "./pages/LogEvent";
 import PatientDashboard from "./pages/PatientDashboard";
 import NotFound from "./pages/NotFound";
+import Medications from "./pages/Medications";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const AppRoutes = () => (
     <Route path="/log-event" element={<ProtectedRoute><LogEvent /></ProtectedRoute>} />
     <Route path="/patient/:patientId" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
+    <Route path="/medications" element={<Medications />} />
   </Routes>
 );
 
