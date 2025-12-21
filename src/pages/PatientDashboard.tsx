@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Info, MapPin, BarChart3 } from 'lucide-react';
-import { format, startOfWeek, startOfDay, subWeeks, subMonths, isSameDay } from 'date-fns';
+import { format, startOfWeek, subDays, subWeeks, subMonths, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid, Dot } from 'recharts'; // Importei Dot
 import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
 
@@ -12,6 +12,15 @@ const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 type TimeRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+// --- CORES PARA O GRÁFICO ---
+const MOOD_COLORS: Record<string, string> = {
+  bom_dia: '#22c55e',   // Verde (Green 500)
+  ansiedade: '#f97316', // Laranja (Orange 500)
+  crise: '#ef4444',     // Vermelho (Red 500)
+  meltdown: '#a855f7',  // Roxo (Purple 500)
+  default: '#1e293b'    // Azul Escuro (Slate 800) - Para médias
+};
 
 const PatientDashboard: React.FC = () => {
   const { patientId } = useParams();
@@ -111,7 +120,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DO GRÁFICO (AGORA COM 'HOJE' CORRETO) ---
+  // --- LÓGICA DO GRÁFICO DE LINHA ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
 
@@ -119,12 +128,10 @@ const PatientDashboard: React.FC = () => {
     let filteredLogs = logs;
     let dateFormat = 'dd/MM';
 
-    // 1. Aplica o filtro de data
+    // 1. Filtro
     if (timeRange === 'daily') {
-      // AGORA: Mostra APENAS eventos de HOJE (desde a meia-noite)
-      // Se preferir "últimas 24h", mude para: subHours(now, 24)
       filteredLogs = logs.filter(l => isSameDay(new Date(l.date), now));
-      dateFormat = 'HH:mm'; // Formato de Hora no eixo X
+      dateFormat = 'HH:mm';
     } else if (timeRange === 'weekly') {
       const cutoff = subWeeks(now, 12);
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
@@ -137,36 +144,30 @@ const PatientDashboard: React.FC = () => {
       dateFormat = 'yyyy';
     }
 
-    // 2. Agrupa os dados (ou mostra individualmente se for diário)
-    // Se for 'daily', não vamos agrupar muito, queremos ver os eventos pontuais.
+    // 2. Mapeamento
     if (timeRange === 'daily') {
+       // No modo diário, passamos o MOOD para colorir a bolinha
        return filteredLogs.map(log => ({
          label: format(new Date(log.date), 'HH:mm'),
          intensity: log.intensity,
          rawDate: new Date(log.date),
-         notes: log.notes // Opcional: para tooltip
+         mood: log.mood, // Passa o humor
+         notes: log.notes
        }));
     }
 
-    // Lógica de agrupamento para Semanal/Mensal/Anual
+    // Modo Agrupado (Média)
     const groups: Record<string, { sum: number; count: number; date: Date }> = {};
-
     filteredLogs.forEach(log => {
       const date = new Date(log.date);
       let key = '';
-
       if (timeRange === 'weekly') {
         const start = startOfWeek(date, { weekStartsOn: 0 });
         key = format(start, 'yyyy-MM-dd'); 
-      } else if (timeRange === 'monthly') {
-        key = format(date, 'yyyy-MM');
-      } else {
-        key = format(date, 'yyyy');
-      }
+      } else if (timeRange === 'monthly') key = format(date, 'yyyy-MM');
+      else key = format(date, 'yyyy');
 
-      if (!groups[key]) {
-        groups[key] = { sum: 0, count: 0, date: date };
-      }
+      if (!groups[key]) groups[key] = { sum: 0, count: 0, date: date };
       groups[key].sum += (log.intensity || 0);
       groups[key].count += 1;
     });
@@ -174,11 +175,44 @@ const PatientDashboard: React.FC = () => {
     return Object.values(groups).map(group => ({
       label: format(group.date, dateFormat, { locale: ptBR }),
       intensity: Number((group.sum / group.count).toFixed(1)),
-      rawDate: group.date
+      rawDate: group.date,
+      mood: 'average' // Marca como média
     })).sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
 
   }, [logs, timeRange]);
 
+
+  // --- COMPONENTE PERSONALIZADO PARA A BOLINHA (DOT) ---
+  const CustomizedDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    
+    // Define a cor baseada no mood e intensidade
+    let fill = MOOD_COLORS.default;
+
+    if (payload.mood) {
+      if (payload.mood === 'bom_dia') {
+        fill = MOOD_COLORS.bom_dia;
+      } else if (payload.mood === 'ansiedade') {
+        fill = MOOD_COLORS.ansiedade;
+      } else if (payload.mood === 'meltdown') {
+        fill = MOOD_COLORS.meltdown;
+      } else if (payload.mood === 'crise') {
+        // Se for crise leve (< 5), pinta de laranja/amarelo. Se forte, vermelho.
+        if (payload.intensity && payload.intensity < 5) {
+          fill = '#f59e0b'; // Amarelo/Laranja Escuro (Amber 500)
+        } else {
+          fill = MOOD_COLORS.crise;
+        }
+      }
+    }
+
+    return (
+      <svg x={cx - 5} y={cy - 5} width={10} height={10} fill={fill} viewBox="0 0 10 10">
+        <circle cx="5" cy="5" r="5" />
+        <circle cx="5" cy="5" r="4" fill="white" fillOpacity="0.2" />
+      </svg>
+    );
+  };
 
   const getHeatmapColor = (count: number) => {
     if (count === 0) return 'bg-gray-100';
@@ -241,7 +275,7 @@ const PatientDashboard: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* GRÁFICO DE EVOLUÇÃO */}
+            {/* GRÁFICO COLORIDO */}
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -249,7 +283,6 @@ const PatientDashboard: React.FC = () => {
                   Evolução da Intensidade
                 </h3>
                 
-                {/* BOTÕES DE FILTRO */}
                 <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
                   {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
                     <button
@@ -261,7 +294,7 @@ const PatientDashboard: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {range === 'daily' && 'Hoje'} {/* Destaquei como 'Hoje' para ficar claro */}
+                      {range === 'daily' && 'Hoje'}
                       {range === 'weekly' && 'Semanal'}
                       {range === 'monthly' && 'Mensal'}
                       {range === 'yearly' && 'Anual'}
@@ -294,7 +327,8 @@ const PatientDashboard: React.FC = () => {
                         dataKey="intensity" 
                         stroke="hsl(215, 45%, 20%)" 
                         strokeWidth={2} 
-                        dot={{ r: 4, fill: 'hsl(215, 45%, 20%)' }} 
+                        // AQUI ESTÁ A MÁGICA: Usamos o componente Customizado
+                        dot={<CustomizedDot />}
                         activeDot={{ r: 6 }}
                       />
                     </LineChart>
@@ -305,6 +339,24 @@ const PatientDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
+              
+              {/* Legenda das Cores */}
+              {timeRange === 'daily' && (
+                <div className="flex flex-wrap gap-3 mt-4 justify-center">
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span> Bom Dia
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-orange-500"></span> Ansiedade
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span> Crise Leve
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span> Crise Forte
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ranking de Locais */}
@@ -340,7 +392,7 @@ const PatientDashboard: React.FC = () => {
             </div>
         </div>
 
-        {/* Gatilhos e Lista */}
+        {/* Gatilhos e Lista (Mantido) */}
         {triggerStats.length > 0 && (
           <div className="card-elevated p-4">
             <h3 className="font-semibold text-foreground mb-4">Principais Gatilhos</h3>
