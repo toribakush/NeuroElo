@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query'; // <--- Importante para atualização automática
-import { Plus, Calendar, TrendingUp, LogOut, Copy, Check, Loader2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query'; 
+import { Plus, Calendar, TrendingUp, LogOut, Copy, Check, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -14,43 +14,76 @@ const FamilyHome: React.FC = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
 
-  // --- BUSCA REAL NO BANCO DE DADOS ---
+  // --- 1. BUSCA O PERFIL DO USUÁRIO (PARA PEGAR O CÓDIGO) ---
+  const { data: profile } = useQuery({
+    queryKey: ['my_profile'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user?.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id
+  });
+
+  // --- 2. GERADOR AUTOMÁTICO DE CÓDIGO ---
+  // Se o perfil carregou e o código está vazio, cria um agora mesmo!
+  useEffect(() => {
+    const generateCode = async () => {
+      if (profile && !profile.connection_code) {
+        // Gera código aleatório de 5 digitos (Ex: A1B2C)
+        const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+        
+        const { error } = await supabase
+          .from('profiles')
+          .update({ connection_code: newCode })
+          .eq('id', user?.id);
+
+        if (!error) {
+          // Atualiza a tela para mostrar o código novo
+          queryClient.invalidateQueries({ queryKey: ['my_profile'] });
+        }
+      }
+    };
+    generateCode();
+  }, [profile, user?.id, queryClient]);
+
+
+  // --- 3. BUSCA OS REGISTROS DO DIÁRIO ---
   const { data: events = [], isLoading } = useQuery({
-    queryKey: ['daily_logs'], // Essa chave conecta com o 'invalidateQueries' do LogEvent
+    queryKey: ['daily_logs'],
     queryFn: async () => {
       if (!user?.id) return [];
-      
       const { data, error } = await supabase
         .from('daily_logs')
         .select('*')
         .eq('user_id', user.id)
-        .order('date', { ascending: false }); // Ordena do mais recente para o mais antigo
+        .order('date', { ascending: false });
 
-      if (error) {
-        console.error('Erro ao buscar logs:', error);
-        throw error;
-      }
+      if (error) throw error;
       return data;
     },
-    enabled: !!user?.id, // Só busca se tiver usuário logado
+    enabled: !!user?.id,
   });
-  // -------------------------------------
 
-  // Cálculos baseados nos dados reais
+  // Cálculos
   const crisisEvents = events.filter((e: any) => e.mood === 'crise');
   const lastCrisis = crisisEvents[0];
-  
   const daysWithoutCrisis = lastCrisis 
     ? Math.floor((Date.now() - new Date(lastCrisis.date).getTime()) / (1000 * 60 * 60 * 24))
-    : 0; // Se nunca teve crise, ou mostra 0 ou um número alto, decida a regra. Coloquei 0 para novos usuários.
+    : 0;
 
   const recentEvents = events.slice(0, 5);
 
   const handleCopyCode = () => {
-    if (user?.connectionCode) {
-      navigator.clipboard.writeText(user.connectionCode);
+    if (profile?.connection_code) {
+      navigator.clipboard.writeText(profile.connection_code);
       setCopied(true);
       toast({ title: 'Código copiado!' });
       setTimeout(() => setCopied(false), 2000);
@@ -77,6 +110,31 @@ const FamilyHome: React.FC = () => {
       </header>
 
       <main className="px-6 space-y-6">
+        
+        {/* Connection Code - AGORA VAI APARECER SEMPRE */}
+        <div className="card-elevated p-4 border-l-4 border-l-primary">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-bold">Seu Código de Conexão</p>
+                {profile?.connection_code ? (
+                  <p className="text-3xl font-mono font-bold text-foreground mt-1 tracking-wider">
+                    {profile.connection_code}
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Gerando código...
+                  </div>
+                )}
+              </div>
+              <Button variant="outline" size="icon" onClick={handleCopyCode} disabled={!profile?.connection_code}>
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Envie este código para o seu médico/terapeuta monitorar.
+            </p>
+        </div>
+
         {/* Streak Card */}
         <div className="card-elevated p-6 gradient-sage text-accent-foreground">
           <div className="flex items-center justify-between">
@@ -89,22 +147,6 @@ const FamilyHome: React.FC = () => {
             <Calendar className="w-12 h-12 opacity-50" />
           </div>
         </div>
-
-        {/* Connection Code */}
-        {user?.connectionCode && (
-          <div className="card-elevated p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Código de conexão</p>
-                <p className="text-xl font-mono font-bold text-foreground mt-1">{user.connectionCode}</p>
-              </div>
-              <Button variant="outline" size="icon" onClick={handleCopyCode}>
-                {copied ? <Check className="w-4 h-4 text-accent" /> : <Copy className="w-4 h-4" />}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Compartilhe com seu profissional</p>
-          </div>
-        )}
 
         {/* Recent Events */}
         <div>
@@ -119,12 +161,11 @@ const FamilyHome: React.FC = () => {
             {isLoading ? (
               <div className="flex justify-center py-4"><Loader2 className="animate-spin text-muted-foreground" /></div>
             ) : recentEvents.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">Nenhum registro ainda.</p>
+              <p className="text-center text-muted-foreground py-4">Toque no + para criar seu primeiro registro.</p>
             ) : (
               recentEvents.map((event: any) => (
                 <div key={event.id} className="card-elevated p-4">
                   <div className="flex items-start gap-3">
-                    {/* Nota: Usando 'mood' em vez de 'type' conforme o banco */}
                     <div className={`status-dot mt-1.5 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -132,7 +173,6 @@ const FamilyHome: React.FC = () => {
                           {EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}
                         </p>
                         <span className="text-xs text-muted-foreground">
-                          {/* Nota: Usando 'date' em vez de 'dateTime' */}
                           {format(new Date(event.date), 'dd/MM HH:mm')}
                         </span>
                       </div>
