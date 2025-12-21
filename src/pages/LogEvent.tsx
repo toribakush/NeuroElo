@@ -6,6 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { EventType, Trigger, EVENT_TYPE_LABELS, TRIGGER_LABELS } from '@/types';
 import { format } from 'date-fns';
+// Importação do Supabase adicionada aqui
+import { supabase } from '@/integrations/supabase/client';
 
 const LogEvent: React.FC = () => {
   const navigate = useNavigate();
@@ -30,16 +32,56 @@ const LogEvent: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // Validação básica
     if (!eventType) {
       toast({ title: 'Selecione o tipo de evento', variant: 'destructive' });
       return;
     }
     
     setIsLoading(true);
-    await new Promise(r => setTimeout(r, 500));
-    
-    toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
-    navigate('/');
+
+    try {
+      // 1. Verifica se o usuário está logado
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        toast({ 
+          title: 'Erro de Autenticação', 
+          description: 'Você precisa estar logado para salvar.', 
+          variant: 'destructive' 
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Envia os dados para o Supabase (Tabela daily_logs)
+      const { error } = await supabase
+        .from('daily_logs')
+        .insert({
+          user_id: user.id,
+          date: dateTime, // Salva a data e hora atual
+          mood: eventType, // Mapeia o 'eventType' para a coluna 'mood'
+          intensity: intensity,
+          triggers: selectedTriggers,
+          notes: notes
+        });
+
+      if (error) throw error;
+      
+      // 3. Sucesso
+      toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
+      navigate('/'); // Volta para a Home
+
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+      toast({ 
+        title: 'Erro ao salvar', 
+        description: 'Houve um problema ao conectar com o banco de dados.', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getIntensityColor = () => {
