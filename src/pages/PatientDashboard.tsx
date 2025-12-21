@@ -27,7 +27,7 @@ const PatientDashboard: React.FC = () => {
   const [maxCrisisCount, setMaxCrisisCount] = useState(0);
   const [locationStats, setLocationStats] = useState<any[]>([]);
 
-  // Filtro de Tempo (Padrão: Diário)
+  // Filtro de Tempo (Inicia como Diário)
   const [timeRange, setTimeRange] = useState<TimeRange>('daily');
 
   useEffect(() => {
@@ -111,7 +111,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DO GRÁFICO (MODIFICADA) ---
+  // --- LÓGICA DO GRÁFICO ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
 
@@ -121,7 +121,7 @@ const PatientDashboard: React.FC = () => {
 
     // 1. Aplica o filtro de data
     if (timeRange === 'daily') {
-      // AGORA: "Diário" mostra apenas os últimos 7 DIAS (semana atual)
+      // AGORA: Mostra apenas os últimos 7 dias
       const cutoff = subDays(now, 7); 
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
       dateFormat = 'dd/MM';
@@ -232,7 +232,7 @@ const PatientDashboard: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* GRÁFICO COM FILTROS */}
+            {/* GRÁFICO DE EVOLUÇÃO (COM BOTÃO 'DIÁRIO') */}
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -240,7 +240,7 @@ const PatientDashboard: React.FC = () => {
                   Evolução da Intensidade
                 </h3>
                 
-                {/* BOTÕES DE FILTRO ATUALIZADOS */}
+                {/* AQUI ESTÃO OS BOTÕES ATUALIZADOS */}
                 <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
                   {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
                     <button
@@ -252,8 +252,7 @@ const PatientDashboard: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {/* AQUI ESTÁ A MUDANÇA NO NOME 👇 */}
-                      {range === 'daily' && 'Diário'}
+                      {range === 'daily' && 'Diário'} {/* Mudança aqui */}
                       {range === 'weekly' && 'Semanal'}
                       {range === 'monthly' && 'Mensal'}
                       {range === 'yearly' && 'Anual'}
