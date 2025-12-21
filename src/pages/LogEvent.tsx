@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'; // Adicionado useEffect
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query'; // <--- NOVO: Importação necessária
 import { ArrowLeft, Calendar, Clock, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 const LogEvent: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient(); // <--- NOVO: Inicializa o cliente para atualizar o cache
   const [isLoading, setIsLoading] = useState(false);
   
   const [eventType, setEventType] = useState<EventType | null>(null);
@@ -19,24 +21,21 @@ const LogEvent: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [dateTime] = useState(new Date());
 
-  // --- O PORTEIRO (NOVO CÓDIGO) ---
-  // Verifica se o usuário está logado assim que a tela abre
+  // --- O PORTEIRO ---
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        // Se não tiver sessão, avisa e manda pro login
         toast({ 
           title: "Login necessário", 
           description: "Você precisa entrar para registrar eventos.",
           variant: "destructive" 
         });
-        navigate('/auth'); // Certifique-se que sua rota de login é '/auth'
+        navigate('/auth');
       }
     };
     checkUser();
-  }, []);
-  // -------------------------------
+  }, [navigate, toast]); // Adicionei dependências para evitar warnings
 
   const eventTypes: EventType[] = ['crise', 'ansiedade', 'meltdown', 'bom_dia'];
   const triggers: Trigger[] = ['barulho', 'sono', 'rotina', 'fome', 'raiva', 'social', 'escola', 'transicao'];
@@ -74,7 +73,7 @@ const LogEvent: React.FC = () => {
         .from('daily_logs')
         .insert({
           user_id: user.id,
-          date: dateTime,
+          date: dateTime.toISOString(), // Boa prática: garantir formato ISO string
           mood: eventType,
           intensity: intensity,
           triggers: selectedTriggers,
@@ -83,6 +82,10 @@ const LogEvent: React.FC = () => {
 
       if (error) throw error;
       
+      // <--- NOVO: Avisa o site que os dados mudaram
+      // Isso força a tela inicial a baixar a lista atualizada do banco
+      await queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
+
       toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
       navigate('/');
 
