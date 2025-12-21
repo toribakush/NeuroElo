@@ -1,14 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// --- CONFIGURAÇÃO CORRIGIDA (AGORA VAI!) ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// 1. URL DO SEU PROJETO ATUAL (Baseada no ID que você mandou)
-const SUPABASE_URL = "https://xqwxwnvwjnxbqrnshpkw.supabase.co";
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Faltam as variáveis de ambiente do Supabase (URL ou Key).');
+}
 
-// 2. CHAVE PADRÃO DO PROJETO (Aquela que começa com VGskK...)
-const SUPABASE_KEY = "sb_publishable_VGskK9gdVs3mZPxehL4hpA_wUJLornj";
-
-console.log("--- CONEXÃO ALINHADA ---");
-console.log("URL:", SUPABASE_URL);
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = createClient(supabaseUrl, supabaseKey);
