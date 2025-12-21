@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Estamos colocando as chaves direto aqui para garantir que funcionem
+// --- CONFIGURAÇÃO MANUAL (PARA GARANTIR QUE FUNCIONE) ---
 const SUPABASE_URL = "https://ttyebetdyvkjlflfkomx.supabase.co";
-const SUPABASE_KEY = "sb_publishable_VGskK9gdVs3mZPxehL4hpA_wUJLornj";
+const SUPABASE_KEY = "sb_publishable_w5kkqjMsIxdMoAa0kCovog_cXHZmAwo";
 
-// Cria a conexão
+// Diagnóstico no Console (Só para termos certeza)
+console.log("Conectando ao Supabase com a nova chave...");
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
