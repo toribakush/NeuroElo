@@ -1,14 +1,38 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import React from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import FamilyHome from './FamilyHome';
+import ProfessionalHome from './ProfessionalHome';
+import { Loader2 } from 'lucide-react';
 
 const Index = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+  const { user, loading } = useAuth();
+
+  // 1. Enquanto carrega o usuário, mostra um loading girando
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
-    </div>
-  );
+    );
+  }
+
+  // 2. Se não estiver logado, o AuthContext geralmente já redireciona para /auth.
+  // Mas por segurança, se não tiver usuário, não renderiza nada (ou redireciona).
+  if (!user) {
+    return null; 
+  }
+
+  // 3. O GRANDE DESVIO: Verifica se é Profissional ou Família
+  // Verifica se o 'role' está salvo nos metadados do usuário ou na propriedade direta
+  const isProfessional = user?.user_metadata?.role === 'professional' || (user as any)?.role === 'professional';
+
+  if (isProfessional) {
+    return <ProfessionalHome />;
+  }
+
+  // 4. Se não for profissional, assume que é Família
+  // Isso vai renderizar o FamilyHome.tsx que editamos (com o código de conexão)
+  return <FamilyHome />;
 };
 
 export default Index;
