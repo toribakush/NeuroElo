@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Info, MapPin, Calendar, BarChart3 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, subDays, subWeeks, subMonths, isSameDay, isSameWeek, isSameMonth, isSameYear } from 'date-fns';
+import { ArrowLeft, Loader2, Info, MapPin, BarChart3 } from 'lucide-react';
+import { format, startOfWeek, subDays, subWeeks, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
-import { Button } from '@/components/ui/button';
 
 const COLORS = ['hsl(215, 45%, 20%)', 'hsl(158, 40%, 45%)', 'hsl(32, 75%, 55%)', 'hsl(12, 60%, 55%)', 'hsl(280, 45%, 55%)', 'hsl(210, 20%, 70%)'];
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -22,13 +21,13 @@ const PatientDashboard: React.FC = () => {
   const [patientName, setPatientName] = useState("");
   const [logs, setLogs] = useState<any[]>([]);
   
-  // Estados dos gráficos
+  // Estados para gráficos estáticos
   const [triggerStats, setTriggerStats] = useState<any[]>([]);
   const [heatmapData, setHeatmapData] = useState<number[][]>([]); 
   const [maxCrisisCount, setMaxCrisisCount] = useState(0);
   const [locationStats, setLocationStats] = useState<any[]>([]);
 
-  // NOVO: Estado do Filtro de Tempo
+  // ESTADO DO FILTRO DE TEMPO (Aqui está a mágica)
   const [timeRange, setTimeRange] = useState<TimeRange>('daily');
 
   useEffect(() => {
@@ -46,7 +45,7 @@ const PatientDashboard: React.FC = () => {
         .from('daily_logs')
         .select('*')
         .eq('user_id', patientId)
-        .order('date', { ascending: true }); // Importante: ordem cronológica
+        .order('date', { ascending: true });
 
       if (error) throw error;
 
@@ -62,9 +61,8 @@ const PatientDashboard: React.FC = () => {
     }
   };
 
-  // Processa gráficos que NÃO mudam com o filtro de tempo (Heatmap, Pizza, Ranking)
   const processStaticCharts = (data: any[]) => {
-    // 1. Gatilhos (Pizza)
+    // 1. Gatilhos
     const triggerCounts: Record<string, number> = {};
     let totalTriggers = 0;
     data.forEach(log => {
@@ -113,7 +111,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DINÂMICA DO GRÁFICO DE LINHA ---
+  // --- LÓGICA DO GRÁFICO FILTRADO ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
 
@@ -121,28 +119,24 @@ const PatientDashboard: React.FC = () => {
     let filteredLogs = logs;
     let dateFormat = 'dd/MM';
 
-    // 1. Filtrar período
+    // 1. Aplica o filtro de data
     if (timeRange === 'daily') {
-      // Últimos 30 dias
       const cutoff = subDays(now, 30);
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
       dateFormat = 'dd/MM';
     } else if (timeRange === 'weekly') {
-      // Últimas 12 semanas
       const cutoff = subWeeks(now, 12);
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
-      dateFormat = 'dd/MM'; // Será data do início da semana
+      dateFormat = 'dd/MM'; 
     } else if (timeRange === 'monthly') {
-      // Últimos 12 meses
       const cutoff = subMonths(now, 12);
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
-      dateFormat = 'MMM/yy';
+      dateFormat = 'MMM';
     } else {
-      // Anual (tudo)
       dateFormat = 'yyyy';
     }
 
-    // 2. Agrupar dados
+    // 2. Agrupa os dados para tirar a média
     const groups: Record<string, { sum: number; count: number; date: Date }> = {};
 
     filteredLogs.forEach(log => {
@@ -152,7 +146,6 @@ const PatientDashboard: React.FC = () => {
       if (timeRange === 'daily') {
         key = format(date, 'yyyy-MM-dd');
       } else if (timeRange === 'weekly') {
-        // Agrupa pelo início da semana
         const start = startOfWeek(date, { weekStartsOn: 0 });
         key = format(start, 'yyyy-MM-dd'); 
       } else if (timeRange === 'monthly') {
@@ -168,10 +161,9 @@ const PatientDashboard: React.FC = () => {
       groups[key].count += 1;
     });
 
-    // 3. Formatar para o gráfico
     return Object.values(groups).map(group => ({
       label: format(group.date, dateFormat, { locale: ptBR }),
-      intensity: Number((group.sum / group.count).toFixed(1)), // Média
+      intensity: Number((group.sum / group.count).toFixed(1)),
       rawDate: group.date
     })).sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
 
@@ -198,7 +190,7 @@ const PatientDashboard: React.FC = () => {
 
       <main className="px-6 space-y-6">
         
-        {/* Heatmap (Não muda com filtro) */}
+        {/* Heatmap */}
         <div className="card-elevated p-4 overflow-hidden">
           <div className="flex items-center gap-2 mb-4">
             <h3 className="font-semibold text-foreground">Horários de Crise</h3>
@@ -239,23 +231,23 @@ const PatientDashboard: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* GRÁFICO DE INTENSIDADE COM FILTRO */}
+            {/* GRÁFICO COM FILTROS */}
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-primary" />
+                  <BarChart3 className="w-4 h-4 text-primary" /> {/* Ícone que faltava */}
                   Evolução da Intensidade
                 </h3>
                 
-                {/* Botões de Filtro */}
-                <div className="flex bg-secondary/30 p-1 rounded-lg">
+                {/* BOTÕES DE FILTRO */}
+                <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
                   {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
                     <button
                       key={range}
                       onClick={() => setTimeRange(range)}
                       className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                         timeRange === range 
-                          ? 'bg-background text-foreground shadow-sm' 
+                          ? 'bg-white shadow-sm text-primary font-bold' 
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -268,7 +260,7 @@ const PatientDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="h-56">
+              <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
@@ -284,25 +276,19 @@ const PatientDashboard: React.FC = () => {
                       tick={{ fontSize: 10, fill: '#6b7280' }} 
                       tickLine={false} 
                       axisLine={false} 
-                      label={{ value: 'Intensidade Média', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#9ca3af' } }}
                     />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                     <Line 
                       type="monotone" 
                       dataKey="intensity" 
                       stroke="hsl(215, 45%, 20%)" 
                       strokeWidth={2} 
-                      dot={{ r: 3, fill: 'hsl(215, 45%, 20%)' }} 
+                      dot={{ r: 4, fill: 'hsl(215, 45%, 20%)' }} 
                       activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-xs text-center text-muted-foreground mt-2">
-                *Mostra a média de intensidade dos eventos no período.
-              </p>
             </div>
 
             {/* Ranking de Locais */}
@@ -338,10 +324,10 @@ const PatientDashboard: React.FC = () => {
             </div>
         </div>
 
-        {/* Triggers & Logs (Mantido igual) */}
+        {/* Gatilhos e Lista (Mantido) */}
         {triggerStats.length > 0 && (
           <div className="card-elevated p-4">
-            <h3 className="font-semibold text-foreground mb-4">Gatilhos</h3>
+            <h3 className="font-semibold text-foreground mb-4">Principais Gatilhos</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -363,9 +349,9 @@ const PatientDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Lista de Registros */}
+        {/* Lista */}
         <div>
-          <h3 className="font-semibold text-foreground mb-4">Histórico Recente</h3>
+          <h3 className="font-semibold text-foreground mb-4">Histórico Completo</h3>
           <div className="space-y-3">
             {[...logs].reverse().slice(0, 20).map((event) => (
               <div key={event.id} className="card-elevated p-4">
