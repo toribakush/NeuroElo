@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Info, MapPin, BarChart3 } from 'lucide-react';
-import { format, startOfWeek, subDays, subWeeks, subMonths } from 'date-fns';
+import { format, startOfWeek, startOfDay, subWeeks, subMonths, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,7 +27,7 @@ const PatientDashboard: React.FC = () => {
   const [maxCrisisCount, setMaxCrisisCount] = useState(0);
   const [locationStats, setLocationStats] = useState<any[]>([]);
 
-  // Filtro de Tempo (Inicia como Diário)
+  // Filtro de Tempo
   const [timeRange, setTimeRange] = useState<TimeRange>('daily');
 
   useEffect(() => {
@@ -111,7 +111,7 @@ const PatientDashboard: React.FC = () => {
     setLocationStats(locStats);
   };
 
-  // --- LÓGICA DO GRÁFICO ---
+  // --- LÓGICA DO GRÁFICO (AGORA COM 'HOJE' CORRETO) ---
   const chartData = useMemo(() => {
     if (logs.length === 0) return [];
 
@@ -121,10 +121,10 @@ const PatientDashboard: React.FC = () => {
 
     // 1. Aplica o filtro de data
     if (timeRange === 'daily') {
-      // AGORA: Mostra apenas os últimos 7 dias
-      const cutoff = subDays(now, 7); 
-      filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
-      dateFormat = 'dd/MM';
+      // AGORA: Mostra APENAS eventos de HOJE (desde a meia-noite)
+      // Se preferir "últimas 24h", mude para: subHours(now, 24)
+      filteredLogs = logs.filter(l => isSameDay(new Date(l.date), now));
+      dateFormat = 'HH:mm'; // Formato de Hora no eixo X
     } else if (timeRange === 'weekly') {
       const cutoff = subWeeks(now, 12);
       filteredLogs = logs.filter(l => new Date(l.date) >= cutoff);
@@ -137,16 +137,25 @@ const PatientDashboard: React.FC = () => {
       dateFormat = 'yyyy';
     }
 
-    // 2. Agrupa os dados
+    // 2. Agrupa os dados (ou mostra individualmente se for diário)
+    // Se for 'daily', não vamos agrupar muito, queremos ver os eventos pontuais.
+    if (timeRange === 'daily') {
+       return filteredLogs.map(log => ({
+         label: format(new Date(log.date), 'HH:mm'),
+         intensity: log.intensity,
+         rawDate: new Date(log.date),
+         notes: log.notes // Opcional: para tooltip
+       }));
+    }
+
+    // Lógica de agrupamento para Semanal/Mensal/Anual
     const groups: Record<string, { sum: number; count: number; date: Date }> = {};
 
     filteredLogs.forEach(log => {
       const date = new Date(log.date);
       let key = '';
 
-      if (timeRange === 'daily') {
-        key = format(date, 'yyyy-MM-dd');
-      } else if (timeRange === 'weekly') {
+      if (timeRange === 'weekly') {
         const start = startOfWeek(date, { weekStartsOn: 0 });
         key = format(start, 'yyyy-MM-dd'); 
       } else if (timeRange === 'monthly') {
@@ -232,7 +241,7 @@ const PatientDashboard: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* GRÁFICO DE EVOLUÇÃO (COM BOTÃO 'DIÁRIO') */}
+            {/* GRÁFICO DE EVOLUÇÃO */}
             <div className="card-elevated p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -240,7 +249,7 @@ const PatientDashboard: React.FC = () => {
                   Evolução da Intensidade
                 </h3>
                 
-                {/* AQUI ESTÃO OS BOTÕES ATUALIZADOS */}
+                {/* BOTÕES DE FILTRO */}
                 <div className="flex bg-secondary/30 p-1 rounded-lg self-start sm:self-auto">
                   {(['daily', 'weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
                     <button
@@ -252,7 +261,7 @@ const PatientDashboard: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {range === 'daily' && 'Diário'} {/* Mudança aqui */}
+                      {range === 'daily' && 'Hoje'} {/* Destaquei como 'Hoje' para ficar claro */}
                       {range === 'weekly' && 'Semanal'}
                       {range === 'monthly' && 'Mensal'}
                       {range === 'yearly' && 'Anual'}
@@ -262,33 +271,39 @@ const PatientDashboard: React.FC = () => {
               </div>
 
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis 
-                      dataKey="label" 
-                      tick={{ fontSize: 10, fill: '#6b7280' }} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis 
-                      domain={[0, 10]} 
-                      tick={{ fontSize: 10, fill: '#6b7280' }} 
-                      tickLine={false} 
-                      axisLine={false} 
-                    />
-                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="intensity" 
-                      stroke="hsl(215, 45%, 20%)" 
-                      strokeWidth={2} 
-                      dot={{ r: 4, fill: 'hsl(215, 45%, 20%)' }} 
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                      <XAxis 
+                        dataKey="label" 
+                        tick={{ fontSize: 10, fill: '#6b7280' }} 
+                        tickLine={false} 
+                        axisLine={false} 
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis 
+                        domain={[0, 10]} 
+                        tick={{ fontSize: 10, fill: '#6b7280' }} 
+                        tickLine={false} 
+                        axisLine={false} 
+                      />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Line 
+                        type="monotone" 
+                        dataKey="intensity" 
+                        stroke="hsl(215, 45%, 20%)" 
+                        strokeWidth={2} 
+                        dot={{ r: 4, fill: 'hsl(215, 45%, 20%)' }} 
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border-2 border-dashed rounded-xl">
+                    Nenhum registro encontrado para este período.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -325,7 +340,7 @@ const PatientDashboard: React.FC = () => {
             </div>
         </div>
 
-        {/* Gatilhos e Lista (Mantido) */}
+        {/* Gatilhos e Lista */}
         {triggerStats.length > 0 && (
           <div className="card-elevated p-4">
             <h3 className="font-semibold text-foreground mb-4">Principais Gatilhos</h3>
