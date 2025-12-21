@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Adicionado useEffect
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, Clock, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { EventType, Trigger, EVENT_TYPE_LABELS, TRIGGER_LABELS } from '@/types';
 import { format } from 'date-fns';
-// Importação do Supabase adicionada aqui
 import { supabase } from '@/integrations/supabase/client';
 
 const LogEvent: React.FC = () => {
@@ -20,6 +19,25 @@ const LogEvent: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [dateTime] = useState(new Date());
 
+  // --- O PORTEIRO (NOVO CÓDIGO) ---
+  // Verifica se o usuário está logado assim que a tela abre
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        // Se não tiver sessão, avisa e manda pro login
+        toast({ 
+          title: "Login necessário", 
+          description: "Você precisa entrar para registrar eventos.",
+          variant: "destructive" 
+        });
+        navigate('/auth'); // Certifique-se que sua rota de login é '/auth'
+      }
+    };
+    checkUser();
+  }, []);
+  // -------------------------------
+
   const eventTypes: EventType[] = ['crise', 'ansiedade', 'meltdown', 'bom_dia'];
   const triggers: Trigger[] = ['barulho', 'sono', 'rotina', 'fome', 'raiva', 'social', 'escola', 'transicao'];
 
@@ -32,7 +50,6 @@ const LogEvent: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    // Validação básica
     if (!eventType) {
       toast({ title: 'Selecione o tipo de evento', variant: 'destructive' });
       return;
@@ -41,26 +58,24 @@ const LogEvent: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. Verifica se o usuário está logado
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         toast({ 
           title: 'Erro de Autenticação', 
-          description: 'Você precisa estar logado para salvar.', 
+          description: 'Sua sessão expirou. Faça login novamente.', 
           variant: 'destructive' 
         });
-        setIsLoading(false);
+        navigate('/auth');
         return;
       }
 
-      // 2. Envia os dados para o Supabase (Tabela daily_logs)
       const { error } = await supabase
         .from('daily_logs')
         .insert({
           user_id: user.id,
-          date: dateTime, // Salva a data e hora atual
-          mood: eventType, // Mapeia o 'eventType' para a coluna 'mood'
+          date: dateTime,
+          mood: eventType,
           intensity: intensity,
           triggers: selectedTriggers,
           notes: notes
@@ -68,9 +83,8 @@ const LogEvent: React.FC = () => {
 
       if (error) throw error;
       
-      // 3. Sucesso
       toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
-      navigate('/'); // Volta para a Home
+      navigate('/');
 
     } catch (error) {
       console.error('Erro ao salvar:', error);
