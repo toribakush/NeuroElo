@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/types';
+import { Session } from '@supabase/supabase-js';
 
+// Define o formato do Usuário para o resto do app
 interface AuthUser {
   id: string;
   email: string;
@@ -12,10 +15,10 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
+  signOut: () => Promise<void>;
+  // Mantemos essas funções vazias ou como wrappers apenas para não quebrar outros arquivos que as chamem
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
-  signOut: () => void;
-  updateConnectionCode: (code: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,85 +31,87 @@ export const useAuth = () => {
   return context;
 };
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Função auxiliar para transformar o usuário do Supabase no formato do seu App
+  const mapSupabaseUser = (session: Session | null): AuthUser | null => {
+    if (!session?.user) return null;
+
+    const metadata = session.user.user_metadata || {};
+
+    return {
+      id: session.user.id,
+      email: session.user.email || '',
+      name: metadata.full_name || 'Usuário', // Pega o nome salvo no cadastro
+      role: (metadata.role as UserRole) || 'family', // Pega a role salva no cadastro
+      connectionCode: metadata.connection_code
+    };
+  };
+
   useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem('neuroelo_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    // 1. Verifica sessão inicial
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(mapSupabaseUser(session));
+      } catch (error) {
+        console.error("Erro ao iniciar sessão:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initSession();
+
+    // 2. Escuta mudanças em tempo real (Login/Logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Mudança de Auth detectada:", _event); // Debug
+      setUser(mapSupabaseUser(session));
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Funções de ação (Wrappers para o Supabase)
+  
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    // Limpa o localStorage para garantir
+    localStorage.clear(); 
+  };
+
+  // Essas funções abaixo agora chamam o Supabase direto, 
+  // caso algum outro componente tente usar o contexto para logar.
   const signIn = async (email: string, password: string) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // For demo, check stored users or use mock data
-    const storedUsers = JSON.parse(localStorage.getItem('neuroelo_users') || '[]');
-    const existingUser = storedUsers.find((u: AuthUser) => u.email === email);
-    
-    if (existingUser) {
-      setUser(existingUser);
-      localStorage.setItem('neuroelo_user', JSON.stringify(existingUser));
-    } else {
-      throw new Error('Usuário não encontrado. Por favor, faça o cadastro.');
-    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   };
 
   const signUp = async (email: string, password: string, name: string, role: UserRole) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    const connectionCode = role === 'family' 
-      ? `#${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-      : undefined;
-    
-    const newUser: AuthUser = {
-      id: `user-${Date.now()}`,
+    // O cadastro real é complexo e já está feito no Auth.tsx, 
+    // mas deixamos aqui como fallback.
+    const { error } = await supabase.auth.signUp({
       email,
-      name,
-      role,
-      connectionCode,
-    };
-    
-    // Store user
-    const storedUsers = JSON.parse(localStorage.getItem('neuroelo_users') || '[]');
-    storedUsers.push(newUser);
-    localStorage.setItem('neuroelo_users', JSON.stringify(storedUsers));
-    
-    setUser(newUser);
-    localStorage.setItem('neuroelo_user', JSON.stringify(newUser));
-  };
-
-  const signOut = () => {
-    setUser(null);
-    localStorage.removeItem('neuroelo_user');
-  };
-
-  const updateConnectionCode = (code: string) => {
-    if (user) {
-      const updatedUser = { ...user, connectionCode: code };
-      setUser(updatedUser);
-      localStorage.setItem('neuroelo_user', JSON.stringify(updatedUser));
-      
-      const storedUsers = JSON.parse(localStorage.getItem('neuroelo_users') || '[]');
-      const updatedUsers = storedUsers.map((u: AuthUser) => 
-        u.id === user.id ? updatedUser : u
-      );
-      localStorage.setItem('neuroelo_users', JSON.stringify(updatedUsers));
-    }
+      password,
+      options: {
+        data: { full_name: name, role: role }
+      }
+    });
+    if (error) throw error;
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, updateConnectionCode }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      signOut,
+      signIn,
+      signUp 
+    }}>
       {children}
     </AuthContext.Provider>
   );
