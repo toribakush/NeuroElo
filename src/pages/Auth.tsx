@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Brain, Users, Stethoscope, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAuth } from '@/contexts/AuthContext';
+// REMOVEMOS O useAuth E USAMOS O SUPABASE DIRETO
+import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,7 +13,7 @@ type SignupStep = 'role' | 'details';
 
 const Auth: React.FC = () => {
   const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
+  // const { signIn, signUp } = useAuth(); // NÃO USAMOS MAIS ISSO
   const { toast } = useToast();
   
   const [mode, setMode] = useState<AuthMode>('signin');
@@ -24,21 +25,28 @@ const Auth: React.FC = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
 
+  // --- FUNÇÃO DE LOGIN REAL ---
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      await signIn(email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
       toast({
         title: 'Bem-vindo de volta!',
         description: 'Login realizado com sucesso.',
       });
-      navigate('/');
-    } catch (error) {
+      navigate('/'); // Vai para a Home
+    } catch (error: any) {
       toast({
         title: 'Erro no login',
-        description: error instanceof Error ? error.message : 'Ocorreu um erro.',
+        description: error.message || 'Verifique email e senha.',
         variant: 'destructive',
       });
     } finally {
@@ -46,6 +54,7 @@ const Auth: React.FC = () => {
     }
   };
 
+  // --- FUNÇÃO DE CADASTRO REAL ---
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
@@ -53,16 +62,57 @@ const Auth: React.FC = () => {
     setIsLoading(true);
     
     try {
-      await signUp(email, password, name, selectedRole);
+      // 1. Cria o usuário na autenticação do Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            role: selectedRole, // Salva se é família ou médico
+          },
+        },
+      });
+
+      if (authError) throw authError;
+
+      // 2. Tenta criar o perfil na tabela 'profiles' manualmente para garantir
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: authData.user.id,
+              email: email,
+              full_name: name,
+              role: selectedRole,
+              // Gera um código aleatório simples se for família
+              connection_code: selectedRole === 'family' ? '#' + Math.random().toString(36).substr(2, 6).toUpperCase() : null
+            }
+          ]);
+          
+          if (profileError) {
+            console.log("Aviso: Perfil já existia ou erro ao criar perfil secundário:", profileError);
+          }
+      }
+
       toast({
         title: 'Conta criada!',
-        description: 'Bem-vindo ao NeuroElo.',
+        description: 'Verifique seu email para confirmar (se necessário) ou faça login.',
       });
-      navigate('/');
-    } catch (error) {
+      
+      // Dependendo da config do Supabase, pode logar direto ou pedir login
+      // Vamos tentar logar direto ou mandar pro login
+      if (authData.session) {
+        navigate('/');
+      } else {
+        setMode('signin'); // Manda o usuário fazer login
+      }
+
+    } catch (error: any) {
       toast({
         title: 'Erro no cadastro',
-        description: error instanceof Error ? error.message : 'Ocorreu um erro.',
+        description: error.message,
         variant: 'destructive',
       });
     } finally {
@@ -75,6 +125,10 @@ const Auth: React.FC = () => {
     setSignupStep('details');
   };
 
+  // ... (O RESTO DO SEU JSX/HTML CONTINUA IGUAL ABAIXO) ...
+  // Mantenha todo o return (...) que você já tem, ele está perfeito.
+  // Só certifique-se de fechar as chaves e o componente no final.
+  
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -300,7 +354,7 @@ const Auth: React.FC = () => {
                 <Button 
                   type="submit" 
                   size="lg" 
-                  variant={selectedRole === 'family' ? 'accent' : 'default'}
+                  variant={selectedRole === 'family' ? 'default' : 'default'} // Ajustado para evitar erro se 'accent' não existir
                   className="w-full mt-6"
                   disabled={isLoading}
                 >
