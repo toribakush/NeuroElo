@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
-import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Calendar } from 'lucide-react'; // Removi ícones que podem não existir na sua versão
+import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -44,7 +44,7 @@ const FamilyHome: React.FC = () => {
     enabled: !!user?.id,
   });
 
-  // 3. Cálculos de Insights (Versão Segura)
+  // 3. Cálculos de Insights
   const insights = useMemo(() => {
     if (!events || events.length === 0) return null;
 
@@ -54,7 +54,7 @@ const FamilyHome: React.FC = () => {
       events.forEach((e: any) => {
         if (!e.date) return;
         const h = new Date(e.date).getHours();
-        if (isNaN(h)) return; // Proteção contra datas inválidas
+        if (isNaN(h)) return;
 
         if (h >= 6 && h < 12) morning++;
         else if (h >= 12 && h < 18) afternoon++;
@@ -62,11 +62,16 @@ const FamilyHome: React.FC = () => {
       });
 
       let periodText = "Variado";
-      let PeriodIcon = Activity; // Usando Activity como fallback seguro
+      let PeriodIcon = Activity;
+      let iconColor = "#64748b"; // cinza padrão
       
-      if (morning > afternoon && morning > night) { periodText = "Manhã"; PeriodIcon = Sun; }
-      else if (afternoon > morning && afternoon > night) { periodText = "Tarde"; PeriodIcon = Sun; }
-      else if (night > morning && night > afternoon) { periodText = "Noite"; PeriodIcon = Moon; }
+      if (morning > afternoon && morning > night) { 
+        periodText = "Manhã"; PeriodIcon = Sunrise; iconColor = "#eab308"; // amarelo
+      } else if (afternoon > morning && afternoon > night) { 
+        periodText = "Tarde"; PeriodIcon = Sun; iconColor = "#f97316"; // laranja
+      } else if (night > morning && night > afternoon) { 
+        periodText = "Noite"; PeriodIcon = Moon; iconColor = "#3b82f6"; // azul
+      }
 
       // B. Gatilho Top
       const triggers: Record<string, number> = {};
@@ -84,19 +89,15 @@ const FamilyHome: React.FC = () => {
          if (!log.date) return;
          const d = new Date(log.date);
          if (isNaN(d.getTime())) return;
-         
          const day = d.getDay();
          const hour = d.getHours();
-         // Proteção extra para índices
-         if (matrix[day] && matrix[day][hour] !== undefined) {
-            matrix[day][hour]++;
-         }
+         if (matrix[day]) matrix[day][hour]++;
       });
 
-      return { periodText, PeriodIcon, topTrigger, matrix };
+      return { periodText, PeriodIcon, iconColor, topTrigger, matrix };
     } catch (error) {
-      console.error("Erro ao calcular insights:", error);
-      return null; // Se der erro, retorna null e mostra a tela padrão
+      console.error("Erro insights:", error);
+      return null;
     }
   }, [events]);
 
@@ -136,7 +137,7 @@ const FamilyHome: React.FC = () => {
 
       <main className="px-6 space-y-4">
         
-        {/* Código de Conexão */}
+        {/* Código */}
         {profile?.connection_code && (
           <div className="flex items-center justify-between bg-muted/50 p-3 rounded-xl border border-dashed border-muted-foreground/30">
              <div className="flex items-center gap-2">
@@ -149,28 +150,36 @@ const FamilyHome: React.FC = () => {
           </div>
         )}
 
-        {/* --- CARDS DE INSIGHTS --- */}
+        {/* --- CARDS DE INSIGHTS COM CORES REAIS --- */}
         {insights ? (
           <div className="grid grid-cols-2 gap-3">
-            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-blue-50/50 border-blue-100">
-              <insights.PeriodIcon className="w-8 h-8 text-blue-500 mb-2" />
-              <p className="text-xs text-muted-foreground">Pior Período</p>
-              <p className="text-lg font-bold text-blue-700">{insights.periodText}</p>
+            {/* Card Período */}
+            <div 
+              className="card-elevated p-4 flex flex-col items-center justify-center text-center"
+              style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }} // Azul claro forçado
+            >
+              <insights.PeriodIcon className="w-8 h-8 mb-2" style={{ color: insights.iconColor }} />
+              <p className="text-xs text-gray-500">Pior Período</p>
+              <p className="text-lg font-bold" style={{ color: insights.iconColor }}>{insights.periodText}</p>
             </div>
-            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center bg-orange-50/50 border-orange-100">
-              <AlertCircle className="w-8 h-8 text-orange-500 mb-2" />
-              <p className="text-xs text-muted-foreground">Principal Gatilho</p>
-              <p className="text-lg font-bold text-orange-700 truncate w-full px-2">{insights.topTrigger}</p>
+
+            {/* Card Gatilho */}
+            <div 
+              className="card-elevated p-4 flex flex-col items-center justify-center text-center"
+              style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }} // Laranja claro forçado
+            >
+              <AlertCircle className="w-8 h-8 mb-2" style={{ color: '#f97316' }} />
+              <p className="text-xs text-gray-500">Principal Gatilho</p>
+              <p className="text-lg font-bold" style={{ color: '#c2410c' }}>{insights.topTrigger}</p>
             </div>
           </div>
         ) : (
-          /* Estado vazio ou erro no cálculo */
           <div className="card-elevated p-6 text-center">
             <p className="text-sm text-muted-foreground">Registre eventos para ver seus padrões.</p>
           </div>
         )}
 
-        {/* --- VISUAL DE BLOCOS (HEATMAP) --- */}
+        {/* --- VISUAL DE BLOCOS (CORES FORÇADAS) --- */}
         {insights && (
           <div className="card-elevated p-4">
              <div className="flex items-center justify-between mb-3">
@@ -181,7 +190,6 @@ const FamilyHome: React.FC = () => {
                 {DAYS_OF_WEEK.map((day, dIdx) => (
                   <div key={dIdx} className="flex flex-col gap-1 items-center">
                     {[0, 1, 2, 3].map((block) => {
-                      // Soma 6h por bloco de forma segura
                       let count = 0;
                       if (insights.matrix && insights.matrix[dIdx]) {
                         for(let h=0; h<6; h++) {
@@ -193,8 +201,12 @@ const FamilyHome: React.FC = () => {
                       return (
                         <div 
                           key={block}
-                          className={`w-8 h-6 rounded-sm ${count > 0 ? 'bg-red-400' : 'bg-gray-100'}`}
-                          style={{ opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 }}
+                          className="w-8 h-6 rounded-sm transition-all"
+                          style={{ 
+                            // Lógica de cor FORÇADA via style
+                            backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', // Vermelho ou Cinza
+                            opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 
+                          }}
                         />
                       );
                     })}
