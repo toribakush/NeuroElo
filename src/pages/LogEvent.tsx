@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query'; // <--- NOVO: Importação necessária
-import { ArrowLeft, Calendar, Clock, Save, Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Calendar, Clock, Save, Loader2, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input'; // <--- Importei o Input
 import { useToast } from '@/hooks/use-toast';
 import { EventType, Trigger, EVENT_TYPE_LABELS, TRIGGER_LABELS } from '@/types';
 import { format } from 'date-fns';
@@ -12,13 +13,14 @@ import { supabase } from '@/integrations/supabase/client';
 const LogEvent: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const queryClient = useQueryClient(); // <--- NOVO: Inicializa o cliente para atualizar o cache
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   
   const [eventType, setEventType] = useState<EventType | null>(null);
   const [intensity, setIntensity] = useState(5);
   const [selectedTriggers, setSelectedTriggers] = useState<Trigger[]>([]);
   const [notes, setNotes] = useState('');
+  const [location, setLocation] = useState(''); // <--- NOVO ESTADO: LOCAL
   const [dateTime] = useState(new Date());
 
   // --- O PORTEIRO ---
@@ -26,25 +28,22 @@ const LogEvent: React.FC = () => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        toast({ 
-          title: "Login necessário", 
-          description: "Você precisa entrar para registrar eventos.",
-          variant: "destructive" 
-        });
+        toast({ title: "Login necessário", variant: "destructive" });
         navigate('/auth');
       }
     };
     checkUser();
-  }, [navigate, toast]); // Adicionei dependências para evitar warnings
+  }, [navigate, toast]);
 
   const eventTypes: EventType[] = ['crise', 'ansiedade', 'meltdown', 'bom_dia'];
   const triggers: Trigger[] = ['barulho', 'sono', 'rotina', 'fome', 'raiva', 'social', 'escola', 'transicao'];
+  
+  // Lista de locais rápidos
+  const commonLocations = ['Casa', 'Escola', 'Trabalho', 'Shopping', 'Rua', 'Carro', 'Terapia'];
 
   const toggleTrigger = (trigger: Trigger) => {
     setSelectedTriggers(prev => 
-      prev.includes(trigger) 
-        ? prev.filter(t => t !== trigger)
-        : [...prev, trigger]
+      prev.includes(trigger) ? prev.filter(t => t !== trigger) : [...prev, trigger]
     );
   };
 
@@ -60,11 +59,6 @@ const LogEvent: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        toast({ 
-          title: 'Erro de Autenticação', 
-          description: 'Sua sessão expirou. Faça login novamente.', 
-          variant: 'destructive' 
-        });
         navigate('/auth');
         return;
       }
@@ -73,17 +67,16 @@ const LogEvent: React.FC = () => {
         .from('daily_logs')
         .insert({
           user_id: user.id,
-          date: dateTime.toISOString(), // Boa prática: garantir formato ISO string
+          date: dateTime.toISOString(),
           mood: eventType,
           intensity: intensity,
           triggers: selectedTriggers,
-          notes: notes
+          notes: notes,
+          location: location // <--- SALVANDO O LOCAL
         });
 
       if (error) throw error;
       
-      // <--- NOVO: Avisa o site que os dados mudaram
-      // Isso força a tela inicial a baixar a lista atualizada do banco
       await queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
 
       toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
@@ -91,11 +84,7 @@ const LogEvent: React.FC = () => {
 
     } catch (error) {
       console.error('Erro ao salvar:', error);
-      toast({ 
-        title: 'Erro ao salvar', 
-        description: 'Houve um problema ao conectar com o banco de dados.', 
-        variant: 'destructive' 
-      });
+      toast({ title: 'Erro ao salvar', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -148,6 +137,39 @@ const LogEvent: React.FC = () => {
           </div>
         </div>
 
+        {/* --- NOVO: LOCALIZAÇÃO --- */}
+        <div>
+          <label className="text-sm font-medium text-foreground mb-3 block">Onde aconteceu?</label>
+          
+          {/* Botões Rápidos */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {commonLocations.map((loc) => (
+              <button
+                key={loc}
+                onClick={() => setLocation(loc)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
+                  ${location === loc 
+                    ? 'bg-primary text-primary-foreground border-primary' 
+                    : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                  }`}
+              >
+                {loc}
+              </button>
+            ))}
+          </div>
+
+          {/* Campo de Texto com Ícone */}
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Ou digite o local aqui..." 
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+
         {/* Intensity */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -191,7 +213,7 @@ const LogEvent: React.FC = () => {
             placeholder="Descreva o que aconteceu..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="min-h-[120px] rounded-xl resize-none"
+            className="min-h-[100px] rounded-xl resize-none"
           />
         </div>
 
