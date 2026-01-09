@@ -9,54 +9,32 @@ import FamilyHome from "./pages/FamilyHome";
 import ProfessionalHome from "./pages/ProfessionalHome";
 import LogEvent from "./pages/LogEvent";
 import PatientDashboard from "./pages/PatientDashboard";
-import NotFound from "./pages/NotFound";
 import Medications from "./pages/Medications";
 
 const queryClient = new QueryClient();
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const AppRoutes = () => {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (!user) return <Navigate to="/auth" replace />;
-  
-  return <>{children}</>;
+  return (
+    <Routes>
+      <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/" />} />
+      <Route path="/" element={user ? (user.role === 'professional' ? <ProfessionalHome /> : <FamilyHome />) : <Navigate to="/auth" />} />
+      <Route path="/log-event" element={user ? <LogEvent /> : <Navigate to="/auth" />} />
+      <Route path="/patient/:patientId" element={user ? <PatientDashboard /> : <Navigate to="/auth" />} />
+      <Route path="/medications" element={user ? <Medications /> : <Navigate to="/auth" />} />
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
 };
-
-const HomeRouter = () => {
-  const { user } = useAuth();
-  // Verifica se o papel é profissional ou família
-  if (user?.role === 'professional') return <ProfessionalHome />;
-  return <FamilyHome />;
-};
-
-const AppRoutes = () => (
-  <Routes>
-    <Route path="/auth" element={<Auth />} />
-    
-    {/* Rota Principal (Decide se mostra Home de Médico ou Família) */}
-    <Route path="/" element={<ProtectedRoute><HomeRouter /></ProtectedRoute>} />
-    
-    {/* Rota de Registro de Eventos */}
-    <Route path="/log-event" element={<ProtectedRoute><LogEvent /></ProtectedRoute>} />
-    
-    {/* Rota do Painel do Paciente (Visão do Médico) */}
-    <Route path="/patient/:patientId" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
-    
-    {/* Rota de Medicamentos (AGORA PROTEGIDA) */}
-    <Route path="/medications" element={<ProtectedRoute><Medications /></ProtectedRoute>} />
-    
-    {/* 404 */}
-    <Route path="*" element={<NotFound />} />
-  </Routes>
-);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
