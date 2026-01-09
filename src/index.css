@@ -4,15 +4,13 @@
 
 @layer base {
   body {
-    @apply bg-[#F8FAFC] text-slate-900 antialiased;
+    background-color: #F8FAFC;
+    color: #0F172A;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-/* Estilo do Spinner de Carregamento para evitar tela branca vazia */
-.loading-screen {
-  @apply h-screen w-screen flex items-center justify-center bg-[#0F172A];
-}
-
-.spinner {
-  @apply w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin;
-}
+/* Força o carregamento do tema Navy se as classes do Tailwind falharem */
+.bg-navy-900 { background-color: #0F172A !important; }
+.text-navy-900 { color: #0F172A !important; }
+.rounded-3xl { border-radius: 32px !important; }
