@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Loader2 } from 'lucide-react'; // Importamos os ícones de olho
+import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false); // Estado para mostrar/esconder senha
+  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -55,90 +54,106 @@ const Auth = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {!isLogin && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Nome Completo</label>
-              <Input
-                type="text"
-                placeholder="Seu nome"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-              />
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1">Nome Completo</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Seu nome"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
             </div>
           )}
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">E-mail</label>
-            <Input
-              type="email"
-              placeholder="exemplo@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">E-mail</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type="email"
+                placeholder="exemplo@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Senha</label>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Senha</label>
             <div className="relative">
-              <Input
-                type={showPassword ? 'text' : 'password'} // Alterna o tipo do input
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pr-10" // Espaço para o ícone
+                className="w-full h-12 pl-10 pr-12 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-primary transition-colors z-20"
+                title={showPassword ? "Esconder senha" : "Mostrar senha"}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
           </div>
 
           {!isLogin && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Você é:</label>
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1">Você é:</label>
               <div className="grid grid-cols-2 gap-2">
-                <Button
+                <button
                   type="button"
-                  variant={role === 'family' ? 'default' : 'outline'}
                   onClick={() => setRole('family')}
-                  className="w-full"
+                  className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                    role === 'family' 
+                    ? 'bg-slate-900 text-white shadow-md' 
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
                 >
                   Família
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant={role === 'professional' ? 'default' : 'outline'}
                   onClick={() => setRole('professional')}
-                  className="w-full"
+                  className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                    role === 'professional' 
+                    ? 'bg-slate-900 text-white shadow-md' 
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
                 >
                   Profissional
-                </Button>
+                </button>
               </div>
             </div>
           )}
 
-          <Button type="submit" className="w-full h-11 text-base font-semibold mt-6" disabled={loading}>
-            {loading ? <Loader2 className="animate-spin mr-2" /> : (isLogin ? 'Entrar' : 'Cadastrar')}
+          <Button type="submit" className="w-full h-12 text-base font-bold rounded-xl mt-4" disabled={loading}>
+            {loading ? <Loader2 className="animate-spin" /> : (isLogin ? 'Entrar no sistema' : 'Finalizar Cadastro')}
           </Button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-8 text-center border-t border-slate-100 pt-6">
           <button
             onClick={() => {
               setIsLogin(!isLogin);
-              setShowPassword(false); // Reseta a visão da senha ao trocar de tela
+              setShowPassword(false);
             }}
-            className="text-primary hover:underline text-sm font-medium"
+            className="text-slate-500 hover:text-primary text-sm font-bold transition-colors"
           >
-            {isLogin ? 'Não tem uma conta? Cadastre-se' : 'Já tem uma conta? Entre aqui'}
+            {isLogin ? 'Ainda não tem conta? Crie uma aqui' : 'Já possui cadastro? Faça o login'}
           </button>
         </div>
       </div>
