@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -19,27 +20,42 @@ const Auth = () => {
 
   // Redireciona se o usuário já estiver logado para evitar o loop de Auth
   useEffect(() => {
-    if (user) navigate('/');
+    if (user) {
+      navigate('/');
+    }
   }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    
     try {
       if (isLogin) {
-        await signIn(email, password);
+        // Realiza o login via Supabase
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) throw error;
+
+        if (data?.user) {
+          toast({ title: "Sucesso!", description: "Entrando no sistema..." });
+          // FORÇA o redirecionamento manual para quebrar loops de estado do React
+          // Isso resolve o erro de carregamento infinito do botão
+          window.location.href = "/"; 
+        }
       } else {
         await signUp(email, password, fullName, role);
+        toast({ title: "Conta criada!", description: "Bem-vindo ao NeuroElo" });
       }
-      // O redirecionamento acontece no useEffect acima ao detectar o usuário
     } catch (error: any) {
+      setLoading(false); // Libera o botão se houver erro
       toast({
         title: "Erro na autenticação",
         description: error.message || "Verifique suas credenciais.",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -65,7 +81,8 @@ const Auth = () => {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full h-14 pl-12 pr-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700"
+                  className="w-full h-14 pl-12 pr-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                  placeholder="Seu nome completo"
                   required
                 />
               </div>
@@ -80,7 +97,8 @@ const Auth = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-14 pl-12 pr-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700"
+                className="w-full h-14 pl-12 pr-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                placeholder="exemplo@email.com"
                 required
               />
             </div>
@@ -94,7 +112,8 @@ const Auth = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-14 pl-12 pr-12 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700"
+                className="w-full h-14 pl-12 pr-12 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-[#0F172A]/10 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                placeholder="••••••••"
                 required
               />
               <button
@@ -135,7 +154,7 @@ const Auth = () => {
             className="w-full h-16 bg-[#0F172A] text-white rounded-[24px] font-bold text-lg shadow-2xl shadow-slate-200 hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 mt-4"
             disabled={loading}
           >
-            {loading ? <Loader2 className="animate-spin" /> : (isLogin ? 'Acessar App' : 'Criar minha conta')}
+            {loading ? <Loader2 className="animate-spin text-white" /> : (isLogin ? 'Acessar App' : 'Criar minha conta')}
           </button>
         </form>
 
