@@ -1,226 +1,167 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, Clock, Save, Loader2, MapPin } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input'; // <--- Importei o Input
-import { useToast } from '@/hooks/use-toast';
-import { EventType, Trigger, EVENT_TYPE_LABELS, TRIGGER_LABELS } from '@/types';
-import { format } from 'date-fns';
+import { ArrowLeft, Check, Info, MapPin, AlertCircle, Sparkles, CloudRain, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
-const LogEvent: React.FC = () => {
+// Configuração de cores pastel e ícones como na referência
+const MOOD_OPTIONS = [
+  { id: 'bom_dia', label: 'Bom Dia', color: 'bg-[#DCFCE7]', text: 'text-[#166534]', icon: Sparkles },
+  { id: 'ansiedade', label: 'Ansiedade', color: 'bg-[#FFEDD5]', text: 'text-[#9A3412]', icon: CloudRain },
+  { id: 'meltdown', label: 'Meltdown', color: 'bg-[#F3E8FF]', text: 'text-[#6B21A8]', icon: Zap },
+  { id: 'crise', label: 'Crise', color: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', icon: AlertCircle },
+];
+
+const TRIGGER_OPTIONS = [
+  { id: 'barulho', label: 'Barulho' },
+  { id: 'mudanca_rotina', label: 'Rotina' },
+  { id: 'fome_sono', label: 'Fome/Sono' },
+  { id: 'frustracao', label: 'Frustração' },
+  { id: 'multidao', label: 'Multidão' },
+  { id: 'estudos', label: 'Estudos' },
+];
+
+const LogEvent = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const [eventType, setEventType] = useState<EventType | null>(null);
+
+  const [mood, setMood] = useState('');
   const [intensity, setIntensity] = useState(5);
-  const [selectedTriggers, setSelectedTriggers] = useState<Trigger[]>([]);
+  const [selectedTriggers, setSelectedTriggers] = useState<string[]>([]);
+  const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
-  const [location, setLocation] = useState(''); // <--- NOVO ESTADO: LOCAL
-  const [dateTime] = useState(new Date());
+  const [loading, setLoading] = useState(false);
 
-  // --- O PORTEIRO ---
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast({ title: "Login necessário", variant: "destructive" });
-        navigate('/auth');
-      }
-    };
-    checkUser();
-  }, [navigate, toast]);
-
-  const eventTypes: EventType[] = ['crise', 'ansiedade', 'meltdown', 'bom_dia'];
-  const triggers: Trigger[] = ['barulho', 'sono', 'rotina', 'fome', 'raiva', 'social', 'escola', 'transicao'];
-  
-  // Lista de locais rápidos
-  const commonLocations = ['Casa', 'Escola', 'Trabalho', 'Shopping', 'Rua', 'Carro', 'Terapia'];
-
-  const toggleTrigger = (trigger: Trigger) => {
+  const toggleTrigger = (id: string) => {
     setSelectedTriggers(prev => 
-      prev.includes(trigger) ? prev.filter(t => t !== trigger) : [...prev, trigger]
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     );
   };
 
   const handleSubmit = async () => {
-    if (!eventType) {
-      toast({ title: 'Selecione o tipo de evento', variant: 'destructive' });
-      return;
-    }
-    
-    setIsLoading(true);
-
+    if (!mood) return toast({ title: "Selecione o estado", variant: "destructive" });
+    setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        navigate('/auth');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('daily_logs')
-        .insert({
-          user_id: user.id,
-          date: dateTime.toISOString(),
-          mood: eventType,
-          intensity: intensity,
-          triggers: selectedTriggers,
-          notes: notes,
-          location: location // <--- SALVANDO O LOCAL
-        });
-
+      const { error } = await supabase.from('daily_logs').insert({
+        user_id: user?.id,
+        mood,
+        intensity,
+        triggers: selectedTriggers,
+        location,
+        notes,
+        date: new Date().toISOString()
+      });
       if (error) throw error;
-      
-      await queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
-
-      toast({ title: 'Evento registrado!', description: 'O registro foi salvo com sucesso.' });
+      toast({ title: "Registro salvo com sucesso!" });
       navigate('/');
-
-    } catch (error) {
-      console.error('Erro ao salvar:', error);
-      toast({ title: 'Erro ao salvar', description: 'Tente novamente.', variant: 'destructive' });
+    } catch (e) {
+      toast({ title: "Erro ao salvar", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  const getIntensityColor = () => {
-    if (intensity <= 3) return 'text-goodday';
-    if (intensity <= 6) return 'text-warning';
-    return 'text-crisis';
   };
 
   return (
-    <div className="min-h-screen bg-background pb-8">
-      <header className="p-6 pb-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-          <span>Voltar</span>
+    <div className="min-h-screen bg-[#F8FAFC] pb-10">
+      <header className="p-6 flex items-center gap-4">
+        <button onClick={() => navigate('/')} className="p-2 bg-white rounded-full shadow-sm">
+          <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
-        <h1 className="text-2xl font-bold text-foreground mt-4">Registrar Evento</h1>
+        <h1 className="text-xl font-bold text-slate-800 tracking-tight">Novo Registro</h1>
       </header>
 
       <main className="px-6 space-y-6">
-        {/* Date/Time */}
-        <div className="card-elevated p-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Calendar className="w-4 h-4" />
-              <span className="text-sm">{format(dateTime, 'dd/MM/yyyy')}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="w-4 h-4" />
-              <span className="text-sm">{format(dateTime, 'HH:mm')}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Event Type */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-3 block">Tipo de Evento</label>
+        
+        {/* Card 1: Como você está? */}
+        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
+          <h3 className="text-slate-800 font-bold mb-4 flex items-center gap-2">
+            Como foi o evento?
+          </h3>
           <div className="grid grid-cols-2 gap-3">
-            {eventTypes.map((type) => (
+            {MOOD_OPTIONS.map((opt) => (
               <button
-                key={type}
-                onClick={() => setEventType(type)}
-                className={`chip ${type} ${eventType === type ? 'selected' : ''} justify-center py-3`}
+                key={opt.id}
+                onClick={() => setMood(opt.id)}
+                className={`flex items-center gap-3 p-4 rounded-2xl transition-all border-2 ${
+                  mood === opt.id ? 'border-slate-900 shadow-md' : 'border-transparent ' + opt.color
+                }`}
               >
-                {EVENT_TYPE_LABELS[type]}
+                <div className={`p-2 rounded-full bg-white/50 ${opt.text}`}>
+                  <opt.icon size={20} />
+                </div>
+                <span className={`text-sm font-bold ${opt.text}`}>{opt.label}</span>
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* --- NOVO: LOCALIZAÇÃO --- */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-3 block">Onde aconteceu?</label>
-          
-          {/* Botões Rápidos */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {commonLocations.map((loc) => (
+        {/* Card 2: Intensidade (Slider Circular Style) */}
+        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-slate-800 font-bold">Intensidade</h3>
+            <span className="text-2xl font-black text-slate-900">{intensity}</span>
+          </div>
+          <input 
+            type="range" min="1" max="10" 
+            value={intensity} 
+            onChange={(e) => setIntensity(Number(e.target.value))}
+            className="w-full h-3 bg-slate-100 rounded-full appearance-none accent-slate-900"
+          />
+          <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span>Leve</span>
+            <span>Severa</span>
+          </div>
+        </section>
+
+        {/* Card 3: Gatilhos (Tags/Chips) */}
+        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
+          <h3 className="text-slate-800 font-bold mb-4">O que desencadeou?</h3>
+          <div className="flex flex-wrap gap-2">
+            {TRIGGER_OPTIONS.map((t) => (
               <button
-                key={loc}
-                onClick={() => setLocation(loc)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
-                  ${location === loc 
-                    ? 'bg-primary text-primary-foreground border-primary' 
-                    : 'bg-background text-muted-foreground border-input hover:bg-muted'
-                  }`}
+                key={t.id}
+                onClick={() => toggleTrigger(t.id)}
+                className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                  selectedTriggers.includes(t.id)
+                  ? 'bg-slate-900 text-white shadow-lg translate-y-[-2px]'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
               >
-                {loc}
+                {t.label}
               </button>
             ))}
           </div>
+        </section>
 
-          {/* Campo de Texto com Ícone */}
+        {/* Card 4: Detalhes extras */}
+        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 space-y-4">
           <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Ou digite o local aqui..." 
+            <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+            <input 
+              placeholder="Onde aconteceu?" 
+              className="w-full bg-slate-50 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              className="pl-9"
             />
           </div>
-        </div>
-
-        {/* Intensity */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-sm font-medium text-foreground">Intensidade</label>
-            <span className={`text-2xl font-bold ${getIntensityColor()}`}>{intensity}</span>
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            value={intensity}
-            onChange={(e) => setIntensity(Number(e.target.value))}
-            className="intensity-slider"
-          />
-          <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-            <span>Leve</span>
-            <span>Severo</span>
-          </div>
-        </div>
-
-        {/* Triggers */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-3 block">Gatilhos</label>
-          <div className="flex flex-wrap gap-2">
-            {triggers.map((trigger) => (
-              <button
-                key={trigger}
-                onClick={() => toggleTrigger(trigger)}
-                className={`chip ${selectedTriggers.includes(trigger) ? 'selected' : ''}`}
-              >
-                {TRIGGER_LABELS[trigger]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-3 block">Observações</label>
-          <Textarea
-            placeholder="Descreva o que aconteceu..."
+          <textarea 
+            placeholder="Observações adicionais..." 
+            rows={3}
+            className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-slate-200 outline-none resize-none"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="min-h-[100px] rounded-xl resize-none"
           />
-        </div>
+        </section>
 
-        {/* Submit */}
-        <Button onClick={handleSubmit} size="xl" className="w-full" disabled={isLoading}>
-          {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Salvar Registro</>}
-        </Button>
+        <button 
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-slate-900 text-white h-14 rounded-[24px] font-bold text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          {loading ? 'Salvando...' : <><Check size={24} /> Salvar Registro</>}
+        </button>
       </main>
     </div>
   );
