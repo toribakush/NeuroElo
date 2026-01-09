@@ -5,10 +5,10 @@ import ProfessionalHome from './ProfessionalHome';
 import { Loader2 } from 'lucide-react';
 
 const Index = () => {
-  const { user, loading } = useAuth();
+  const { user, isLoading } = useAuth();
 
   // 1. Enquanto carrega o usuário, mostra um loading girando
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -24,7 +24,7 @@ const Index = () => {
 
   // 3. O GRANDE DESVIO: Verifica se é Profissional ou Família
   // Verifica se o 'role' está salvo nos metadados do usuário ou na propriedade direta
-  const isProfessional = user?.user_metadata?.role === 'professional' || (user as any)?.role === 'professional';
+  const isProfessional = user?.role === 'professional';
 
   if (isProfessional) {
     return <ProfessionalHome />;
