@@ -5,9 +5,14 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Auth from "./pages/Auth";
 import FamilyHome from "./pages/FamilyHome";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false, // Evita loops de carregamento se o banco falhar
+    },
+  },
+});
 
-// Componente de rotas separado para evitar o erro de Refs no Provider
 const AppRoutes = () => {
   const { user, isLoading } = useAuth();
 
@@ -23,20 +28,22 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/" />} />
       <Route path="/" element={user ? <FamilyHome /> : <Navigate to="/auth" />} />
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to="/auth" />} />
     </Routes>
   );
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-        <Toaster />
-      </BrowserRouter>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+          <Toaster />
+        </BrowserRouter>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
