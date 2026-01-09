@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
-import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise, Trash2, Pill, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Plus, LogOut, Copy, Check, Sun, Moon, AlertCircle, Activity, Sunrise, Trash2, Pill, ChevronRight, Settings, Calendar, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -20,7 +19,6 @@ const FamilyHome: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // 1. Busca Perfil
   const { data: profile } = useQuery({
     queryKey: ['my_profile'],
     queryFn: async () => {
@@ -30,32 +28,22 @@ const FamilyHome: React.FC = () => {
     enabled: !!user?.id
   });
 
-  // 2. Busca Logs
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [] } = useQuery({
     queryKey: ['daily_logs'],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data } = await supabase
-        .from('daily_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
+      const { data } = await supabase.from('daily_logs').select('*').eq('user_id', user.id).order('date', { ascending: false });
       return data || [];
     },
     enabled: !!user?.id,
   });
 
-  // 3. Cálculos de Insights
   const insights = useMemo(() => {
     if (!events || events.length === 0) return null;
-
     try {
       let morning = 0, afternoon = 0, night = 0;
       events.forEach((e: any) => {
-        if (!e.date) return;
         const h = new Date(e.date).getHours();
-        if (isNaN(h)) return;
-
         if (h >= 6 && h < 12) morning++;
         else if (h >= 12 && h < 18) afternoon++;
         else night++;
@@ -63,14 +51,15 @@ const FamilyHome: React.FC = () => {
 
       let periodText = "Variado";
       let PeriodIcon = Activity;
-      let iconColor = "#64748b"; 
+      let iconBg = "bg-slate-100";
+      let iconColor = "text-slate-600";
       
       if (morning > afternoon && morning > night) { 
-        periodText = "Manhã"; PeriodIcon = Sunrise; iconColor = "#eab308"; 
+        periodText = "Manhã"; PeriodIcon = Sunrise; iconBg = "bg-[#FEF3F2]"; iconColor = "text-[#991B1B]"; 
       } else if (afternoon > morning && afternoon > night) { 
-        periodText = "Tarde"; PeriodIcon = Sun; iconColor = "#f97316"; 
+        periodText = "Tarde"; PeriodIcon = Sun; iconBg = "bg-[#FFF7ED]"; iconColor = "text-[#9A3412]"; 
       } else if (night > morning && night > afternoon) { 
-        periodText = "Noite"; PeriodIcon = Moon; iconColor = "#3b82f6"; 
+        periodText = "Noite"; PeriodIcon = Moon; iconBg = "bg-[#F0F9FF]"; iconColor = "text-[#075985]"; 
       }
 
       const triggers: Record<string, number> = {};
@@ -84,171 +73,92 @@ const FamilyHome: React.FC = () => {
 
       const matrix = Array(7).fill(0).map(() => Array(24).fill(0));
       events.forEach((log: any) => {
-         if (!log.date) return;
          const d = new Date(log.date);
-         if (isNaN(d.getTime())) return;
-         const day = d.getDay();
-         const hour = d.getHours();
-         if (matrix[day]) matrix[day][hour]++;
+         matrix[d.getDay()][d.getHours()]++;
       });
 
-      return { periodText, PeriodIcon, iconColor, topTrigger, matrix };
-    } catch (error) {
-      console.error("Erro insights:", error);
-      return null;
-    }
+      return { periodText, PeriodIcon, iconBg, iconColor, topTrigger, matrix };
+    } catch (e) { return null; }
   }, [events]);
 
-  useEffect(() => {
-    if (profile && !profile.connection_code) {
-      const gen = async () => {
-        const code = Math.random().toString(36).substring(2, 7).toUpperCase();
-        await supabase.from('profiles').update({ connection_code: code }).eq('id', user?.id);
-        queryClient.invalidateQueries({ queryKey: ['my_profile'] });
-      };
-      gen();
-    }
-  }, [profile, user?.id, queryClient]);
-
-  const handleCopyCode = () => {
-    if (profile?.connection_code) {
-      navigator.clipboard.writeText(profile.connection_code);
-      setCopied(true);
-      toast({ title: 'Copiado!' });
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Tem certeza que deseja excluir este registro?")) return;
-    
-    setIsDeleting(true);
-    try {
-      const { error } = await supabase.from('daily_logs').delete().eq('id', id);
-      if (error) throw error;
-      
-      toast({ title: "Registro excluído" });
-      queryClient.invalidateQueries({ queryKey: ['daily_logs'] });
-    } catch (error) {
-      toast({ title: "Erro ao excluir", variant: "destructive" });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background pb-24">
-      <header className="p-6 pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Olá, {user?.name?.split(' ')[0] || 'Família'}</h1>
-            <p className="text-sm text-muted-foreground">Seu resumo de hoje</p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={signOut}><LogOut className="w-5 h-5" /></Button>
+    <div className="min-h-screen bg-[#F8FAFC] pb-32">
+      <header className="p-6 flex justify-between items-center">
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Bem-vindo</p>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Olá, {user?.name?.split(' ')[0] || 'Família'}</h1>
         </div>
+        <button onClick={signOut} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><LogOut size={20} /></button>
       </header>
 
-      <main className="px-6 space-y-4">
-        
-        {profile?.connection_code && (
-          <div className="flex items-center justify-between bg-muted/50 p-3 rounded-xl border border-dashed border-muted-foreground/30">
-             <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">Seu Código:</span>
-                <span className="font-mono font-bold text-lg tracking-wider text-foreground">{profile.connection_code}</span>
-             </div>
-             <Button variant="ghost" size="sm" onClick={handleCopyCode} className="h-8 w-8 p-0">
-                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-             </Button>
-          </div>
-        )}
-
-        {insights ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
-              <insights.PeriodIcon className="w-8 h-8 mb-2" style={{ color: insights.iconColor }} />
-              <p className="text-xs text-gray-500">Pior Período</p>
-              <p className="text-lg font-bold" style={{ color: insights.iconColor }}>{insights.periodText}</p>
-            </div>
-
-            <div className="card-elevated p-4 flex flex-col items-center justify-center text-center" style={{ backgroundColor: '#fff7ed', border: '1px solid #ffedd5' }}>
-              <AlertCircle className="w-8 h-8 mb-2" style={{ color: '#f97316' }} />
-              <p className="text-xs text-gray-500">Principal Gatilho</p>
-              <p className="text-lg font-bold" style={{ color: '#c2410c' }}>{insights.topTrigger}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="card-elevated p-6 text-center">
-            <p className="text-sm text-muted-foreground">Registre eventos para ver seus padrões.</p>
-          </div>
-        )}
-
-        <button 
-          onClick={() => navigate('/medications')}
-          className="w-full card-elevated p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors"
+      <main className="px-6 space-y-6">
+        {/* Banner de Registro Rápido */}
+        <section 
+          onClick={() => navigate('/log-event')}
+          className="bg-slate-900 rounded-[32px] p-6 text-white shadow-xl flex justify-between items-center cursor-pointer active:scale-[0.98] transition-all"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 text-purple-600 rounded-full">
-              <Pill className="w-5 h-5" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-foreground text-sm">Medicamentos</p>
-              <p className="text-xs text-muted-foreground">Gerenciar receitas e doses</p>
-            </div>
+          <div>
+            <h2 className="text-xl font-bold mb-1">Novo Registro</h2>
+            <p className="text-slate-400 text-xs">Como foi o evento de agora?</p>
           </div>
-          <ChevronRight className="w-5 h-5 text-muted-foreground" />
-        </button>
+          <div className="bg-white/10 p-3 rounded-full"><Plus size={28} /></div>
+        </section>
 
-        {insights && (
-          <div className="card-elevated p-4">
-             <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Intensidade Semanal</h3>
-                <span className="text-[10px] text-muted-foreground">Madrugada → Noite</span>
-             </div>
-             <div className="flex justify-between">
-                {DAYS_OF_WEEK.map((day, dIdx) => (
-                  <div key={dIdx} className="flex flex-col gap-1 items-center">
-                    {[0, 1, 2, 3].map((block) => {
-                      let count = 0;
-                      if (insights.matrix && insights.matrix[dIdx]) {
-                        for(let h=0; h<6; h++) {
-                           const val = insights.matrix[dIdx][(block*6)+h];
-                           if (typeof val === 'number') count += val;
-                        }
-                      }
-                      return (
-                        <div key={block} className="w-8 h-6 rounded-sm transition-all" style={{ backgroundColor: count > 0 ? '#ef4444' : '#f3f4f6', opacity: count > 0 ? Math.min(1, 0.4 + (count * 0.2)) : 1 }} />
-                      );
-                    })}
-                    <span className="text-[10px] text-muted-foreground mt-1">{day}</span>
-                  </div>
-                ))}
-             </div>
+        {/* Grade de Cards Clean */}
+        <div className="grid grid-cols-2 gap-4">
+          <div onClick={() => navigate('/medications')} className="bg-white rounded-[32px] p-5 shadow-sm border border-slate-100 flex flex-col justify-between h-36 cursor-pointer">
+            <div className="w-10 h-10 bg-[#F3E8FF] rounded-full flex items-center justify-center text-[#6B21A8]"><Pill size={20} /></div>
+            <p className="text-sm font-bold text-slate-800">Medicamentos</p>
           </div>
+
+          <div className="bg-white rounded-[32px] p-5 shadow-sm border border-slate-100 flex flex-col justify-between h-36 cursor-pointer">
+            <div className="w-10 h-10 bg-[#DCFCE7] rounded-full flex items-center justify-center text-[#166534]"><Calendar size={20} /></div>
+            <p className="text-sm font-bold text-slate-800">Histórico</p>
+          </div>
+        </div>
+
+        {/* Insights Section */}
+        {insights && (
+          <section className="space-y-4">
+            <div className="flex gap-3">
+              <div className={`flex-1 ${insights.iconBg} rounded-[32px] p-5 border border-slate-100`}>
+                <insights.PeriodIcon className={`w-8 h-8 mb-2 ${insights.iconColor}`} />
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Pior Horário</p>
+                <p className={`text-lg font-black ${insights.iconColor}`}>{insights.periodText}</p>
+              </div>
+              <div className="flex-1 bg-[#FFF7ED] rounded-[32px] p-5 border border-slate-100">
+                <AlertCircle className="w-8 h-8 mb-2 text-[#9A3412]" />
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Principal Gatilho</p>
+                <p className="text-lg font-black text-[#9A3412] truncate">{insights.topTrigger}</p>
+              </div>
+            </div>
+          </section>
         )}
 
-        <div>
-          <h2 className="text-base font-semibold mb-3 ml-1">Últimos Registros</h2>
-          <div className="space-y-2">
-            {events.slice(0, 5).map((event: any) => (
-              <div key={event.id} className="bg-card border rounded-lg p-3 flex items-center gap-3 shadow-sm group">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-400'}`} />
-                <div className="flex-1 min-w-0">
-                   <div className="flex justify-between items-center">
-                      <span className="font-medium text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</span>
-                      <span className="text-xs text-muted-foreground">{event.date ? format(new Date(event.date), 'dd/MM HH:mm') : '-'}</span>
-                   </div>
-                   {event.notes && <p className="text-xs text-muted-foreground truncate">{event.notes}</p>}
-                </div>
-                <button onClick={() => handleDelete(event.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-70 hover:opacity-100" disabled={isDeleting}>
-                  <Trash2 className="w-4 h-4" />
-                </button>
+        {/* Lista de Registros */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Atividade Recente</h3>
+          {events.slice(0, 3).map((event: any) => (
+            <div key={event.id} className="bg-white rounded-[24px] p-4 flex items-center gap-4 shadow-sm border border-slate-50 group">
+              <div className={`w-2 h-10 rounded-full ${EVENT_TYPE_COLORS[event.mood as keyof typeof EVENT_TYPE_COLORS] || 'bg-slate-200'}`} />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-800 text-sm">{EVENT_TYPE_LABELS[event.mood as keyof typeof EVENT_TYPE_LABELS] || event.mood}</p>
+                <p className="text-[10px] text-slate-400 font-medium">{format(new Date(event.date), 'dd/MM HH:mm')}</p>
               </div>
-            ))}
-          </div>
+              <button onClick={() => handleDelete(event.id)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
+            </div>
+          ))}
         </div>
       </main>
 
-      <button onClick={() => navigate('/log-event')} className="fab"><Plus className="w-8 h-8" /></button>
+      {/* Floating Navbar */}
+      <nav className="fixed bottom-8 left-8 right-8 h-16 bg-slate-900 rounded-full shadow-2xl flex items-center justify-around px-8 z-50">
+        <button className="text-white"><Activity size={24} /></button>
+        <button onClick={() => navigate('/log-event')} className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-slate-900 shadow-lg -mt-10 border-4 border-[#F8FAFC]">
+          <Plus size={28} />
+        </button>
+        <button className="text-slate-500"><Settings size={24} /></button>
+      </nav>
     </div>
   );
 };
