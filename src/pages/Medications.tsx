@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { medicationSchema } from '@/lib/validation';
 
 const Medications: React.FC = () => {
   const navigate = useNavigate();
@@ -35,15 +36,24 @@ const Medications: React.FC = () => {
 
   // Adicionar Medicamento
   const handleAdd = async () => {
-    if (!name) return toast({ title: "Nome obrigatório", variant: "destructive" });
+    // Validate input before submission
+    const validation = medicationSchema.safeParse({ name, dosage, time });
+    if (!validation.success) {
+      toast({ 
+        title: "Dados inválidos", 
+        description: validation.error.errors[0].message,
+        variant: "destructive" 
+      });
+      return;
+    }
     
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('medications').insert({
         user_id: user?.id,
-        name,
-        dosage,
-        time
+        name: validation.data.name,
+        dosage: validation.data.dosage || null,
+        time: validation.data.time || null
       });
 
       if (error) throw error;

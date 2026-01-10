@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { loginSchema, signupSchema, getSafeErrorMessage } from '@/lib/validation';
+import { z } from 'zod';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -30,30 +32,51 @@ const Auth = () => {
     setLoading(true);
     
     try {
+      // Validate input before submission
       if (isLogin) {
+        const validation = loginSchema.safeParse({ email, password });
+        if (!validation.success) {
+          setLoading(false);
+          toast({
+            title: "Dados inválidos",
+            description: validation.error.errors[0].message,
+            variant: "destructive",
+          });
+          return;
+        }
+
         // Realiza o login via Supabase
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+          email: validation.data.email,
+          password: validation.data.password,
         });
 
         if (error) throw error;
 
         if (data?.user) {
           toast({ title: "Sucesso!", description: "Entrando no sistema..." });
-          // FORÇA o redirecionamento manual para quebrar loops de estado do React
-          // Isso resolve o erro de carregamento infinito do botão
           window.location.href = "/"; 
         }
       } else {
-        await signUp(email, password, fullName, role);
+        const validation = signupSchema.safeParse({ email, password, fullName, role });
+        if (!validation.success) {
+          setLoading(false);
+          toast({
+            title: "Dados inválidos",
+            description: validation.error.errors[0].message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        await signUp(validation.data.email, validation.data.password, validation.data.fullName, validation.data.role);
         toast({ title: "Conta criada!", description: "Bem-vindo ao NeuroElo" });
       }
-    } catch (error: any) {
-      setLoading(false); // Libera o botão se houver erro
+    } catch (error: unknown) {
+      setLoading(false);
       toast({
         title: "Erro na autenticação",
-        description: error.message || "Verifique suas credenciais.",
+        description: getSafeErrorMessage(error),
         variant: "destructive",
       });
     }
