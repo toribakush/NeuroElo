@@ -1,10 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Chaves extraídas diretamente do seu painel aberto
+const supabaseUrl = 'https://xqwxwnvwjnxbqrnshpkw.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhxd3h3bnZ3am54YnFybnNocGt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyOTgyODQsImV4cCI6MjA4MTg3NDI4NH0.FgdvaZ0TpNef4bZ7wKRLgqZmNxx4Z0jf6zyFH6CGjaI';
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Faltam as variáveis de ambiente do Supabase (URL ou Key).');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
