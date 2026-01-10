@@ -4,6 +4,8 @@ import { ArrowLeft, Check, Info, MapPin, AlertCircle, Sparkles, CloudRain, Zap }
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { dailyLogSchema } from '@/lib/validation';
+import { z } from 'zod';
 
 // Configuração de cores pastel e ícones como na referência
 const MOOD_OPTIONS = [
@@ -43,14 +45,34 @@ const LogEvent = () => {
   const handleSubmit = async () => {
     if (!mood) return toast({ title: "Selecione o estado", variant: "destructive" });
     setLoading(true);
+    
     try {
-      const { error } = await supabase.from('daily_logs').insert({
-        user_id: user?.id,
+      // Validate input before submission
+      const validation = dailyLogSchema.safeParse({
         mood,
         intensity,
         triggers: selectedTriggers,
         location,
         notes,
+      });
+      
+      if (!validation.success) {
+        toast({ 
+          title: "Dados inválidos", 
+          description: validation.error.errors[0].message,
+          variant: "destructive" 
+        });
+        setLoading(false);
+        return;
+      }
+
+      const { error } = await supabase.from('daily_logs').insert({
+        user_id: user?.id,
+        mood: validation.data.mood,
+        intensity: validation.data.intensity,
+        triggers: validation.data.triggers,
+        location: validation.data.location || null,
+        notes: validation.data.notes || null,
         date: new Date().toISOString()
       });
       if (error) throw error;

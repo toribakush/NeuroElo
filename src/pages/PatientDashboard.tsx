@@ -24,7 +24,9 @@ const PatientDashboard = () => {
       const { data: m } = await supabase.from('medications').select('*').eq('user_id', patientId).order('created_at', { ascending: false });
       setMeds(m || []);
     } catch (e) {
-      console.error("Erro ao carregar dados:", e);
+      if (import.meta.env.DEV) {
+        console.error("Erro ao carregar dados:", e);
+      }
     } finally {
       setLoading(false);
     }

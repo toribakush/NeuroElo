@@ -58,7 +58,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         connectionCode: profile?.connection_code
       };
     } catch (error) {
-      console.error("Error fetching user data:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching user data:", error);
+      }
       return null;
     }
   };

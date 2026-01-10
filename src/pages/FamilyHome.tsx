@@ -19,7 +19,9 @@ const FamilyHome = () => {
           if (data) setEvents(data);
         }
       } catch (e) {
-        console.error("Erro ao carregar dados", e);
+        if (import.meta.env.DEV) {
+          console.error("Erro ao carregar dados", e);
+        }
       } finally {
         setInternalLoading(false); // Força a saída do estado de carregamento
       }

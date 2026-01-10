@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { medicationSchema } from '@/lib/validation';
 import { useToast } from '@/hooks/use-toast';
 
 const MOOD_COLORS: Record<string, string> = {
@@ -62,7 +63,9 @@ const PatientDashboard: React.FC = () => {
       if (medications) setMeds(medications);
 
     } catch (error) {
-      console.error(error);
+      if (import.meta.env.DEV) {
+        console.error(error);
+      }
     } finally {
       setLoading(false);
     }
@@ -104,14 +107,29 @@ const PatientDashboard: React.FC = () => {
 
   // Funções de Gerenciamento de Medicamentos pelo Médico
   const handleAddMed = async () => {
-    if (!newMedName) return;
+    // Validate input before submission
+    const validation = medicationSchema.safeParse({ 
+      name: newMedName, 
+      dosage: newMedDose, 
+      time: newMedTime 
+    });
+    
+    if (!validation.success) {
+      toast({ 
+        title: "Dados inválidos", 
+        description: validation.error.errors[0].message,
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setIsSavingMed(true);
     try {
       const { error } = await supabase.from('medications').insert({
         user_id: patientId,
-        name: newMedName,
-        dosage: newMedDose,
-        time: newMedTime
+        name: validation.data.name,
+        dosage: validation.data.dosage || null,
+        time: validation.data.time || null
       });
       if (error) throw error;
       toast({ title: "Medicamento adicionado ao prontuário" });
