@@ -1,19 +1,24 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import FamilyHome from './FamilyHome';
-import ProfessionalHome from './ProfessionalHome';
 import { Loader2 } from 'lucide-react';
+
+// Code splitting: Load role-specific components only when needed
+// This prevents exposing professional UI code to family users
+const FamilyHome = lazy(() => import('./FamilyHome'));
+const ProfessionalHome = lazy(() => import('./ProfessionalHome'));
+
+const LoadingSpinner = () => (
+  <div className="h-screen w-full flex items-center justify-center bg-background">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 const Index = () => {
   const { user, isLoading } = useAuth();
 
   // 1. Enquanto carrega o usuário, mostra um loading girando
   if (isLoading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   // 2. Se não estiver logado, o AuthContext geralmente já redireciona para /auth.
@@ -23,16 +28,15 @@ const Index = () => {
   }
 
   // 3. O GRANDE DESVIO: Verifica se é Profissional ou Família
-  // Verifica se o 'role' está salvo nos metadados do usuário ou na propriedade direta
+  // Role is securely fetched from user_roles table via RLS
   const isProfessional = user?.role === 'professional';
 
-  if (isProfessional) {
-    return <ProfessionalHome />;
-  }
-
-  // 4. Se não for profissional, assume que é Família
-  // Isso vai renderizar o FamilyHome.tsx que editamos (com o código de conexão)
-  return <FamilyHome />;
+  // 4. Render with Suspense for code splitting
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      {isProfessional ? <ProfessionalHome /> : <FamilyHome />}
+    </Suspense>
+  );
 };
 
 export default Index;

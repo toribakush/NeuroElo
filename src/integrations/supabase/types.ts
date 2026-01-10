@@ -119,6 +119,7 @@ export type Database = {
       profiles: {
         Row: {
           connection_code: string | null
+          connection_code_expires_at: string | null
           created_at: string | null
           email: string | null
           full_name: string | null
@@ -127,6 +128,7 @@ export type Database = {
         }
         Insert: {
           connection_code?: string | null
+          connection_code_expires_at?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -135,6 +137,7 @@ export type Database = {
         }
         Update: {
           connection_code?: string | null
+          connection_code_expires_at?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
@@ -184,6 +187,7 @@ export type Database = {
         Args: { _patient_id: string; _professional_id: string }
         Returns: boolean
       }
+      validate_connection_code: { Args: { _code: string }; Returns: string }
     }
     Enums: {
       app_role: "professional" | "family"
