@@ -40,6 +40,12 @@ const LogEvent = () => {
     );
   };
 
+  const getIntensityColor = (val: number) => {
+    if (val <= 3) return 'text-green-500';
+    if (val <= 7) return 'text-orange-500';
+    return 'text-red-500';
+  };
+
   const handleSubmit = async () => {
     if (!mood) return toast({ title: "Selecione como você está se sentindo", variant: "destructive" });
     setLoading(true);
@@ -84,7 +90,32 @@ const LogEvent = () => {
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] pb-24 font-sans">
-      {/* Header Estilo App */}
+      <style>{`
+        input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 28px;
+          width: 28px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+          border: 2px solid #9333ea;
+          margin-top: -10px;
+          transition: all 0.2s ease;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+          width: 100%;
+          height: 8px;
+          cursor: pointer;
+          background: #f1f5f9;
+          border-radius: 10px;
+        }
+        input[type=range]:focus::-webkit-slider-thumb {
+          box-shadow: 0 0 0 8px rgba(147, 51, 234, 0.1);
+          transform: scale(1.1);
+        }
+      `}</style>
+
       <header className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
         <button onClick={() => navigate('/')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
           <X className="w-6 h-6 text-slate-600" />
@@ -97,11 +128,10 @@ const LogEvent = () => {
           </div>
           <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">15 de Janeiro</span>
         </div>
-        <div className="w-10" /> {/* Spacer */}
+        <div className="w-10" />
       </header>
 
       <main className="px-6 mt-4 space-y-6">
-        {/* Barra de Busca Minimalista */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
           <input 
@@ -111,7 +141,6 @@ const LogEvent = () => {
           />
         </div>
 
-        {/* Seção de Humor Circular */}
         <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
           <h3 className="text-slate-800 font-semibold text-center mb-8">Como você está se sentindo hoje?</h3>
           <div className="flex justify-between items-start gap-2">
@@ -136,29 +165,40 @@ const LogEvent = () => {
           </div>
         </section>
 
-        {/* Intensidade Slider */}
         <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-10">
             <h3 className="text-slate-800 font-semibold">Intensidade</h3>
-            <div className="bg-purple-50 px-4 py-1 rounded-full">
-              <span className="text-lg font-bold text-purple-600">{intensity}</span>
+            <div className="flex items-baseline gap-1">
+              <span className={`text-3xl font-black transition-colors duration-300 ${getIntensityColor(intensity)}`}>
+                {intensity}
+              </span>
+              <span className="text-slate-300 text-xs font-bold">/ 10</span>
             </div>
           </div>
-          <div className="px-2">
+          <div className="px-2 relative">
             <input 
               type="range" min="1" max="10" 
               value={intensity} 
               onChange={(e) => setIntensity(Number(e.target.value))}
-              className="w-full h-2 bg-slate-100 rounded-full appearance-none accent-purple-600 cursor-pointer"
+              className="w-full appearance-none bg-transparent cursor-pointer"
             />
-            <div className="flex justify-between mt-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-              <span>Leve</span>
-              <span>Severa</span>
+            <div className="flex justify-between mt-6 px-1">
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-1 h-1 rounded-full bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">Leve</span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-1 h-1 rounded-full bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">Moderada</span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-1 h-1 rounded-full bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">Severa</span>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Categorias / Gatilhos */}
         <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-slate-800 font-semibold">O que desencadeou?</h3>
@@ -182,7 +222,6 @@ const LogEvent = () => {
           </div>
         </section>
 
-        {/* Localização e Notas */}
         <section className="space-y-4">
           <div className="bg-white rounded-[24px] p-2 shadow-sm border border-white flex items-center">
             <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
@@ -206,7 +245,6 @@ const LogEvent = () => {
           </div>
         </section>
 
-        {/* Botão Salvar Flutuante */}
         <div className="fixed bottom-8 left-6 right-6 z-20">
           <button 
             onClick={handleSubmit}
