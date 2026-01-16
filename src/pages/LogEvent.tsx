@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Info, MapPin, AlertCircle, Sparkles, CloudRain, Zap } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Search, MapPin, Check, Sparkles, CloudRain, Zap, AlertCircle, Smile, Heart, Coffee, Moon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { dailyLogSchema } from '@/lib/validation';
-import { z } from 'zod';
 
-// Configuração de cores pastel e ícones como na referência
 const MOOD_OPTIONS = [
-  { id: 'bom_dia', label: 'Bom Dia', color: 'bg-[#DCFCE7]', text: 'text-[#166534]', icon: Sparkles },
-  { id: 'ansiedade', label: 'Ansiedade', color: 'bg-[#FFEDD5]', text: 'text-[#9A3412]', icon: CloudRain },
-  { id: 'meltdown', label: 'Meltdown', color: 'bg-[#F3E8FF]', text: 'text-[#6B21A8]', icon: Zap },
-  { id: 'crise', label: 'Crise', color: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', icon: AlertCircle },
+  { id: 'bom_dia', label: 'Feliz', color: 'bg-green-50', iconColor: 'text-green-500', icon: Smile },
+  { id: 'calma', label: 'Calma', color: 'bg-orange-50', iconColor: 'text-orange-500', icon: Coffee },
+  { id: 'ansiedade', label: 'Ansiedade', color: 'bg-purple-50', iconColor: 'text-purple-500', icon: CloudRain },
+  { id: 'crise', label: 'Crise', color: 'bg-red-50', iconColor: 'text-red-500', icon: AlertCircle },
 ];
 
 const TRIGGER_OPTIONS = [
-  { id: 'barulho', label: 'Barulho' },
-  { id: 'mudanca_rotina', label: 'Rotina' },
-  { id: 'fome_sono', label: 'Fome/Sono' },
-  { id: 'frustracao', label: 'Frustração' },
-  { id: 'multidao', label: 'Multidão' },
-  { id: 'estudos', label: 'Estudos' },
+  { id: 'barulho', label: 'Barulho', icon: Zap },
+  { id: 'rotina', label: 'Rotina', icon: Moon },
+  { id: 'fome', label: 'Fome/Sono', icon: Coffee },
+  { id: 'frustracao', label: 'Frustração', icon: AlertCircle },
+  { id: 'multidao', label: 'Multidão', icon: Heart },
+  { id: 'estudos', label: 'Estudos', icon: Sparkles },
 ];
 
 const LogEvent = () => {
@@ -43,11 +41,10 @@ const LogEvent = () => {
   };
 
   const handleSubmit = async () => {
-    if (!mood) return toast({ title: "Selecione o estado", variant: "destructive" });
+    if (!mood) return toast({ title: "Selecione como você está se sentindo", variant: "destructive" });
     setLoading(true);
     
     try {
-      // Validate input before submission
       const validation = dailyLogSchema.safeParse({
         mood,
         intensity,
@@ -86,104 +83,143 @@ const LogEvent = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-10">
-      <header className="p-6 flex items-center gap-4">
-        <button onClick={() => navigate('/')} className="p-2 bg-white rounded-full shadow-sm">
-          <ArrowLeft className="w-5 h-5 text-slate-600" />
+    <div className="min-h-screen bg-[#F5F5F5] pb-24 font-sans">
+      {/* Header Estilo App */}
+      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
+        <button onClick={() => navigate('/')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <X className="w-6 h-6 text-slate-600" />
         </button>
-        <h1 className="text-xl font-bold text-slate-800 tracking-tight">Novo Registro</h1>
+        <div className="flex flex-col items-center">
+          <div className="flex items-center gap-4">
+            <ChevronLeft className="w-4 h-4 text-slate-400" />
+            <span className="font-bold text-slate-800">Hoje</span>
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">15 de Janeiro</span>
+        </div>
+        <div className="w-10" /> {/* Spacer */}
       </header>
 
-      <main className="px-6 space-y-6">
-        
-        {/* Card 1: Como você está? */}
-        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
-          <h3 className="text-slate-800 font-bold mb-4 flex items-center gap-2">
-            Como foi o evento?
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
+      <main className="px-6 mt-4 space-y-6">
+        {/* Barra de Busca Minimalista */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+          <input 
+            type="text" 
+            placeholder="Buscar..." 
+            className="w-full bg-white border-none rounded-2xl py-4 pl-12 pr-4 shadow-sm text-slate-600 placeholder:text-slate-300 focus:ring-2 focus:ring-purple-100 outline-none transition-all"
+          />
+        </div>
+
+        {/* Seção de Humor Circular */}
+        <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
+          <h3 className="text-slate-800 font-semibold text-center mb-8">Como você está se sentindo hoje?</h3>
+          <div className="flex justify-between items-start gap-2">
             {MOOD_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setMood(opt.id)}
-                className={`flex items-center gap-3 p-4 rounded-2xl transition-all border-2 ${
-                  mood === opt.id ? 'border-slate-900 shadow-md' : 'border-transparent ' + opt.color
-                }`}
+                className="flex flex-col items-center gap-3 group"
               >
-                <div className={`p-2 rounded-full bg-white/50 ${opt.text}`}>
-                  <opt.icon size={20} />
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  mood === opt.id 
+                  ? 'bg-purple-600 text-white shadow-lg scale-110' 
+                  : opt.color + ' ' + opt.iconColor + ' hover:scale-105'
+                }`}>
+                  <opt.icon size={28} strokeWidth={mood === opt.id ? 2.5 : 2} />
                 </div>
-                <span className={`text-sm font-bold ${opt.text}`}>{opt.label}</span>
+                <span className={`text-xs font-medium transition-colors ${mood === opt.id ? 'text-purple-600 font-bold' : 'text-slate-400'}`}>
+                  {opt.label}
+                </span>
               </button>
             ))}
           </div>
         </section>
 
-        {/* Card 2: Intensidade (Slider Circular Style) */}
-        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-slate-800 font-bold">Intensidade</h3>
-            <span className="text-2xl font-black text-slate-900">{intensity}</span>
+        {/* Intensidade Slider */}
+        <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-slate-800 font-semibold">Intensidade</h3>
+            <div className="bg-purple-50 px-4 py-1 rounded-full">
+              <span className="text-lg font-bold text-purple-600">{intensity}</span>
+            </div>
           </div>
-          <input 
-            type="range" min="1" max="10" 
-            value={intensity} 
-            onChange={(e) => setIntensity(Number(e.target.value))}
-            className="w-full h-3 bg-slate-100 rounded-full appearance-none accent-slate-900"
-          />
-          <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            <span>Leve</span>
-            <span>Severa</span>
+          <div className="px-2">
+            <input 
+              type="range" min="1" max="10" 
+              value={intensity} 
+              onChange={(e) => setIntensity(Number(e.target.value))}
+              className="w-full h-2 bg-slate-100 rounded-full appearance-none accent-purple-600 cursor-pointer"
+            />
+            <div className="flex justify-between mt-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+              <span>Leve</span>
+              <span>Severa</span>
+            </div>
           </div>
         </section>
 
-        {/* Card 3: Gatilhos (Tags/Chips) */}
-        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
-          <h3 className="text-slate-800 font-bold mb-4">O que desencadeou?</h3>
-          <div className="flex flex-wrap gap-2">
+        {/* Categorias / Gatilhos */}
+        <section className="bg-white rounded-[32px] p-8 shadow-sm border border-white">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-slate-800 font-semibold">O que desencadeou?</h3>
+            <button className="text-xs font-bold text-pink-400 hover:text-pink-500 transition-colors">Editar</button>
+          </div>
+          <div className="flex flex-wrap gap-3">
             {TRIGGER_OPTIONS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => toggleTrigger(t.id)}
-                className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
                   selectedTriggers.includes(t.id)
-                  ? 'bg-slate-900 text-white shadow-lg translate-y-[-2px]'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  ? 'bg-pink-50 border-pink-100 text-pink-600 shadow-sm'
+                  : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
                 }`}
               >
+                <t.icon size={14} className={selectedTriggers.includes(t.id) ? 'text-pink-500' : 'text-slate-300'} />
                 {t.label}
               </button>
             ))}
           </div>
         </section>
 
-        {/* Card 4: Detalhes extras */}
-        <section className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 space-y-4">
-          <div className="relative">
-            <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+        {/* Localização e Notas */}
+        <section className="space-y-4">
+          <div className="bg-white rounded-[24px] p-2 shadow-sm border border-white flex items-center">
+            <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
+              <MapPin size={20} />
+            </div>
             <input 
               placeholder="Onde aconteceu?" 
-              className="w-full bg-slate-50 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+              className="flex-1 bg-transparent border-none py-4 px-4 text-sm text-slate-600 placeholder:text-slate-300 focus:ring-0 outline-none"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             />
           </div>
-          <textarea 
-            placeholder="Observações adicionais..." 
-            rows={3}
-            className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-slate-200 outline-none resize-none"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
+          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-white">
+            <textarea 
+              placeholder="Observações adicionais..." 
+              rows={4}
+              className="w-full bg-transparent border-none p-0 text-sm text-slate-600 placeholder:text-slate-300 focus:ring-0 outline-none resize-none"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
         </section>
 
-        <button 
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-slate-900 text-white h-14 rounded-[24px] font-bold text-lg shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          {loading ? 'Salvando...' : <><Check size={24} /> Salvar Registro</>}
-        </button>
+        {/* Botão Salvar Flutuante */}
+        <div className="fixed bottom-8 left-6 right-6 z-20">
+          <button 
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full bg-slate-900 hover:bg-black text-white h-16 rounded-[24px] font-bold text-lg shadow-2xl shadow-slate-400/50 active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <><Check size={24} strokeWidth={3} /> Salvar Registro</>
+            )}
+          </button>
+        </div>
       </main>
     </div>
   );
