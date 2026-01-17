@@ -1,170 +1,358 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, LogOut, Activity, Pill, Calendar, Settings, ChevronRight, User, Bell, Heart } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useToast } from '@/hooks/use-toast';
+import { 
+  Calendar, 
+  Plus, 
+  Pill, 
+  LogOut, 
+  Copy, 
+  RefreshCw, 
+  Clock,
+  CalendarDays,
+  User
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+interface DailyLog {
+  id: string;
+  mood: string | null;
+  intensity: number | null;
+  date: string | null;
+  notes: string | null;
+}
+
+interface Medication {
+  id: string;
+  name: string;
+  dosage: string | null;
+  time: string | null;
+}
+
+interface Appointment {
+  id: string;
+  scheduled_at: string;
+  title: string;
+  duration_minutes: number;
+  status: string;
+  professional_id: string;
+}
 
 const FamilyHome = () => {
-  const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [events, setEvents] = useState<any[]>([]);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [connectionCode, setConnectionCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        if (user?.id) {
-          const { data } = await supabase
-            .from('event_logs')
-            .select('*')
-            .eq('patient_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(3);
-          if (data) setEvents(data);
-        }
-      } catch (e) {
-        console.error("Erro ao carregar dados", e);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, [user]);
 
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    try {
+      // Fetch daily logs
+      const { data: logsData } = await supabase
+        .from('daily_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(5);
+
+      // Fetch medications
+      const { data: medsData } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('user_id', user.id);
+
+      // Fetch upcoming appointments
+      const { data: appointmentsData } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('patient_id', user.id)
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true });
+
+      // Fetch connection code
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('connection_code')
+        .eq('id', user.id)
+        .single();
+
+      setLogs(logsData || []);
+      setMedications(medsData || []);
+      setAppointments((appointmentsData as Appointment[]) || []);
+      setConnectionCode(profile?.connection_code || null);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateConnectionCode = async () => {
+    if (!user) return;
+
+    try {
+      // The trigger will generate the code automatically
+      const { error } = await supabase
+        .from('profiles')
+        .update({ connection_code: null }) // Reset to trigger generation
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Refetch to get the new code
+      const { data } = await supabase
+        .from('profiles')
+        .select('connection_code')
+        .eq('id', user.id)
+        .single();
+
+      setConnectionCode(data?.connection_code || null);
+      toast({ title: 'Código gerado!', description: 'Compartilhe com seu profissional.' });
+    } catch (error) {
+      console.error('Error generating code:', error);
+      toast({ 
+        title: 'Erro', 
+        description: 'Não foi possível gerar o código.', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const copyCode = () => {
+    if (connectionCode) {
+      navigator.clipboard.writeText(connectionCode);
+      toast({ title: 'Código copiado!', description: 'Cole para compartilhar.' });
+    }
+  };
+
+  const getMoodEmoji = (mood: string | null) => {
+    const moods: Record<string, string> = {
+      happy: '😊',
+      calm: '😌',
+      anxious: '😰',
+      sad: '😢',
+      angry: '😠',
+      neutral: '😐'
+    };
+    return moods[mood || ''] || '📝';
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 pb-32">
-      {/* Header Amigável */}
-      <header className="bg-white px-6 pt-12 pb-6 border-b border-slate-100">
-        <div className="flex justify-between items-start">
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-100 px-4 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">NeuroElo • Família</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Olá, <span className="text-indigo-600">{user?.name?.split(' ')[0] || 'Felipe'}</span>
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">Como está o dia hoje?</p>
+            <h1 className="text-xl font-bold text-slate-900">Olá, {user?.name?.split(' ')[0]}!</h1>
+            <p className="text-sm text-slate-500">Como você está hoje?</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="icon" className="rounded-full bg-slate-50 text-slate-400">
-              <Bell size={20} />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={signOut} className="rounded-full bg-slate-50 text-slate-400 hover:text-red-500">
-              <LogOut size={20} />
-            </Button>
-          </div>
+          <Button variant="ghost" size="icon" onClick={signOut}>
+            <LogOut className="w-5 h-5 text-slate-400" />
+          </Button>
         </div>
       </header>
 
-      <main className="px-6 py-8 space-y-8">
-        {/* Ação Principal: Novo Registro */}
-        <div 
-          onClick={() => navigate('/log-event')}
-          className="relative overflow-hidden bg-indigo-600 rounded-[32px] p-8 text-white shadow-xl shadow-indigo-200 cursor-pointer active:scale-[0.98] transition-all group"
-        >
-          <div className="relative z-10 flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold">Novo Registro</h2>
-              <p className="text-indigo-100 text-sm mt-1">Relate um comportamento ou evento</p>
-            </div>
-            <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm group-hover:bg-white group-hover:text-indigo-600 transition-all">
-              <Plus size={32} strokeWidth={3} />
-            </div>
-          </div>
-          {/* Elementos Decorativos */}
-          <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
-          <div className="absolute -left-4 -top-4 w-24 h-24 bg-indigo-400/20 rounded-full blur-xl" />
-        </div>
-
-        {/* Atalhos Rápidos */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card 
+      <main className="max-w-2xl mx-auto p-4 space-y-6">
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 gap-3">
+          <Button 
+            onClick={() => navigate('/log-event')}
+            className="h-20 bg-indigo-600 hover:bg-indigo-700 rounded-2xl flex flex-col gap-2"
+          >
+            <Plus className="w-6 h-6" />
+            <span className="text-sm font-medium">Novo Registro</span>
+          </Button>
+          <Button 
             onClick={() => navigate('/medications')}
-            className="border-none shadow-sm bg-white rounded-[28px] p-6 cursor-pointer hover:shadow-md transition-all active:scale-95 group"
+            variant="outline"
+            className="h-20 rounded-2xl flex flex-col gap-2 border-slate-200"
           >
-            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-              <Pill size={24} />
-            </div>
-            <h3 className="font-bold text-slate-800">Remédios</h3>
-            <p className="text-xs text-slate-400 mt-1">Rotina e estoque</p>
-          </Card>
-
-          <Card 
-            onClick={() => navigate('/history')}
-            className="border-none shadow-sm bg-white rounded-[28px] p-6 cursor-pointer hover:shadow-md transition-all active:scale-95 group"
-          >
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-              <Calendar size={24} />
-            </div>
-            <h3 className="font-bold text-slate-800">Histórico</h3>
-            <p className="text-xs text-slate-400 mt-1">Ver registros</p>
-          </Card>
+            <Pill className="w-6 h-6 text-indigo-600" />
+            <span className="text-sm font-medium text-slate-700">Medicações</span>
+          </Button>
         </div>
 
-        {/* Últimos Registros */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Activity size={20} className="text-indigo-600" />
-              Atividade Recente
-            </h3>
-            <Button variant="link" onClick={() => navigate('/history')} className="text-indigo-600 font-bold text-xs">
-              Ver tudo
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            {loading ? (
-              <div className="p-8 text-center text-slate-400 italic text-sm">Carregando registros...</div>
-            ) : events.length === 0 ? (
-              <Card className="border-dashed border-2 border-slate-200 bg-transparent rounded-[28px] p-8 text-center">
-                <Heart className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                <p className="text-slate-400 text-sm">Nenhum registro hoje.</p>
-              </Card>
+        {/* Connection Code */}
+        <Card className="border-slate-100 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Código de Conexão
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {connectionCode ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-slate-100 rounded-xl px-4 py-3 font-mono text-lg tracking-widest text-center">
+                  {connectionCode}
+                </div>
+                <Button variant="outline" size="icon" onClick={copyCode}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={generateConnectionCode}>
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
             ) : (
-              events.map((event) => (
-                <Card key={event.id} className="border-none shadow-sm bg-white rounded-2xl p-4 flex items-center justify-between group hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-white transition-colors">
-                      <Activity size={18} />
+              <Button onClick={generateConnectionCode} className="w-full">
+                Gerar Código de Conexão
+              </Button>
+            )}
+            <p className="text-xs text-slate-500 mt-2">
+              Compartilhe este código com seu profissional para conectar.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Appointments */}
+        <Card className="border-slate-100 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <CalendarDays className="w-4 h-4" />
+              Próximos Agendamentos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {appointments.length > 0 ? (
+              <div className="space-y-3">
+                {appointments.slice(0, 3).map((apt) => (
+                  <div 
+                    key={apt.id} 
+                    className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl"
+                  >
+                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm">{event.event_type}</h4>
-                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                        {new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div className="flex-1">
+                      <p className="font-medium text-slate-900">{apt.title}</p>
+                      <p className="text-sm text-slate-500">
+                        {format(new Date(apt.scheduled_at), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                       </p>
                     </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      apt.status === 'scheduled' ? 'bg-green-100 text-green-700' :
+                      apt.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                      'bg-slate-100 text-slate-700'
+                    }`}>
+                      {apt.status === 'scheduled' ? 'Agendado' : 
+                       apt.status === 'cancelled' ? 'Cancelado' : 'Concluído'}
+                    </span>
                   </div>
-                  <ChevronRight size={16} className="text-slate-300" />
-                </Card>
-              ))
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">
+                Nenhum agendamento próximo
+              </p>
             )}
-          </div>
-        </div>
-      </main>
+          </CardContent>
+        </Card>
 
-      {/* Menu Inferior Flutuante */}
-      <nav className="fixed bottom-6 left-6 right-6 bg-white/80 backdrop-blur-lg border border-white/20 h-20 rounded-[24px] shadow-2xl flex items-center justify-around px-4 z-50">
-        <Button variant="ghost" className="flex flex-col gap-1 text-indigo-600">
-          <Activity size={24} />
-          <span className="text-[10px] font-bold">Início</span>
-        </Button>
-        <Button variant="ghost" onClick={() => navigate('/history')} className="flex flex-col gap-1 text-slate-400">
-          <Calendar size={24} />
-          <span className="text-[10px] font-bold">Histórico</span>
-        </Button>
-        <Button variant="ghost" onClick={() => navigate('/medications')} className="flex flex-col gap-1 text-slate-400">
-          <Pill size={24} />
-          <span className="text-[10px] font-bold">Remédios</span>
-        </Button>
-        <Button variant="ghost" className="flex flex-col gap-1 text-slate-400">
-          <Settings size={24} />
-          <span className="text-[10px] font-bold">Ajustes</span>
-        </Button>
-      </nav>
+        {/* Recent Logs */}
+        <Card className="border-slate-100 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              Registros Recentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {logs.length > 0 ? (
+              <div className="space-y-2">
+                {logs.map((log) => (
+                  <div 
+                    key={log.id} 
+                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl"
+                  >
+                    <span className="text-2xl">{getMoodEmoji(log.mood)}</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-700 capitalize">
+                        {log.mood || 'Registro'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {log.date ? format(new Date(log.date), 'dd/MM/yyyy') : '-'}
+                      </p>
+                    </div>
+                    {log.intensity && (
+                      <span className="text-xs bg-slate-200 px-2 py-1 rounded-full">
+                        Intensidade: {log.intensity}/10
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">
+                Nenhum registro ainda. Comece agora!
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Medications */}
+        <Card className="border-slate-100 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Pill className="w-4 h-4" />
+              Minhas Medicações
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {medications.length > 0 ? (
+              <div className="space-y-2">
+                {medications.map((med) => (
+                  <div 
+                    key={med.id} 
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">{med.name}</p>
+                      <p className="text-xs text-slate-500">{med.dosage}</p>
+                    </div>
+                    {med.time && (
+                      <span className="text-sm text-slate-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {med.time}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => navigate('/medications')}
+              >
+                Adicionar Medicação
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </main>
     </div>
   );
 };

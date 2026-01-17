@@ -1,310 +1,471 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Info, MapPin, BarChart3, Pill, Plus, Trash2, Save, Calendar, User, Activity, Clock, Scale, ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { 
+  Users, 
+  Plus, 
+  LogOut, 
+  Search,
+  Calendar,
+  Clock,
+  X,
+  ChevronRight,
+  CalendarPlus
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, CartesianGrid } from 'recharts';
-import { supabase } from '@/integrations/supabase/client';
-import { EVENT_TYPE_LABELS, TRIGGER_LABELS, EVENT_TYPE_COLORS } from '@/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { MedicationList } from '@/components/MedicationList';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const MOOD_COLORS = {
-  bom_dia: '#10b981',
-  ansiedade: '#f59e0b',
-  crise: '#ef4444',
-  meltdown: '#8b5cf6',
-  default: '#64748b'
-};
+interface Patient {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  connected_at: string;
+}
+
+interface Appointment {
+  id: string;
+  scheduled_at: string;
+  title: string;
+  duration_minutes: number;
+  status: string;
+  patient_id: string;
+  patient_name?: string;
+}
 
 const ProfessionalHome = () => {
-  const { patientId } = useParams();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [patientName, setPatientName] = useState("");
-  const [logs, setLogs] = useState([]);
-  const [meds, setMeds] = useState([]);
-  const [newMedName, setNewMedName] = useState('');
-  const [newMedDose, setNewMedDose] = useState('');
-  const [newMedTime, setNewMedTime] = useState('');
-  const [isSavingMed, setIsSavingMed] = useState(false);
-  const [triggerStats, setTriggerStats] = useState([]);
-  const [locationStats, setLocationStats] = useState([]);
+  const [connectionCode, setConnectionCode] = useState('');
+  const [addingPatient, setAddingPatient] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Scheduling state
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleTitle, setScheduleTitle] = useState('Consulta');
+  const [scheduleDuration, setScheduleDuration] = useState('60');
+  const [scheduling, setScheduling] = useState(false);
 
   useEffect(() => {
-    if (patientId) fetchAllData();
-  }, [patientId]);
+    loadData();
+  }, [user]);
 
-  const fetchAllData = async () => {
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+
     try {
-      setLoading(true);
-      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', patientId).single();
-      if (profile) setPatientName(profile.full_name);
+      // Fetch connected patients
+      const { data: connections } = await supabase
+        .from('patient_connections')
+        .select('patient_id, created_at')
+        .eq('professional_id', user.id);
 
-      const { data: logsData } = await supabase.from('event_logs').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
-      setLogs(logsData || []);
+      if (connections && connections.length > 0) {
+        const patientIds = connections.map(c => c.patient_id);
+        
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', patientIds);
 
-      const { data: medsData } = await supabase.from('medications').select('*').eq('patient_id', patientId).order('name');
-      setMeds(medsData || []);
+        const patientsWithDates = profiles?.map(p => ({
+          ...p,
+          connected_at: connections.find(c => c.patient_id === p.id)?.created_at || ''
+        })) || [];
 
-      processStats(logsData || []);
+        setPatients(patientsWithDates);
+
+        // Fetch appointments for connected patients
+        const { data: appointmentsData } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('professional_id', user.id)
+          .order('scheduled_at', { ascending: true });
+
+        // Add patient names to appointments
+        const appointmentsWithNames = (appointmentsData as Appointment[] || []).map(apt => ({
+          ...apt,
+          patient_name: profiles?.find(p => p.id === apt.patient_id)?.full_name || 'Paciente'
+        }));
+
+        setAppointments(appointmentsWithNames);
+      } else {
+        setPatients([]);
+        setAppointments([]);
+      }
     } catch (error) {
-      console.error("Error fetching data:", error);
-      toast({ variant: "destructive", title: "Erro ao carregar dados", description: "Não foi possível carregar as informações do paciente." });
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const processStats = (data) => {
-    const triggers = {};
-    const locations = {};
-    data.forEach(log => {
-      if (log.trigger) triggers[log.trigger] = (triggers[log.trigger] || 0) + 1;
-      if (log.location_name) locations[log.location_name] = (locations[log.location_name] || 0) + 1;
-    });
-
-    setTriggerStats(Object.entries(triggers).map(([name, value]) => ({ name: TRIGGER_LABELS[name] || name, value })));
-    setLocationStats(Object.entries(locations).map(([name, value]) => ({ name, value })));
-  };
-
-  const handleAddMedication = async () => {
-    if (!newMedName || !newMedDose || !newMedTime) {
-      toast({ title: "Campos obrigatórios", description: "Preencha todos os campos do medicamento.", variant: "destructive" });
-      return;
-    }
+  const addPatient = async () => {
+    if (!user || !connectionCode.trim()) return;
+    setAddingPatient(true);
 
     try {
-      setIsSavingMed(true);
-      const { error } = await supabase.from('medications').insert({
-        patient_id: patientId,
-        name: newMedName,
-        dosage: newMedDose,
-        frequency: newMedTime,
-        next_dose: newMedTime,
-        stock: 30
+      // Validate the connection code
+      const { data: patientId, error: validateError } = await supabase
+        .rpc('validate_connection_code', { _code: connectionCode.trim().toUpperCase() });
+
+      if (validateError || !patientId) {
+        toast({ 
+          title: 'Código inválido', 
+          description: 'Verifique o código e tente novamente.', 
+          variant: 'destructive' 
+        });
+        return;
+      }
+
+      // Create connection
+      const { error: connectError } = await supabase
+        .from('patient_connections')
+        .insert({
+          professional_id: user.id,
+          patient_id: patientId,
+          connection_code: connectionCode.trim().toUpperCase()
+        });
+
+      if (connectError) {
+        if (connectError.code === '23505') {
+          toast({ 
+            title: 'Já conectado', 
+            description: 'Este paciente já está na sua lista.', 
+            variant: 'destructive' 
+          });
+        } else {
+          throw connectError;
+        }
+        return;
+      }
+
+      toast({ title: 'Paciente conectado!', description: 'Agora você pode ver os registros.' });
+      setConnectionCode('');
+      loadData();
+    } catch (error) {
+      console.error('Error adding patient:', error);
+      toast({ 
+        title: 'Erro', 
+        description: 'Não foi possível adicionar o paciente.', 
+        variant: 'destructive' 
       });
-
-      if (error) throw error;
-
-      toast({ title: "Sucesso", description: "Medicamento adicionado com sucesso!" });
-      setNewMedName('');
-      setNewMedDose('');
-      setNewMedTime('');
-      fetchAllData();
-    } catch (error) {
-      console.error("Error adding medication:", error);
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível adicionar o medicamento." });
     } finally {
-      setIsSavingMed(false);
+      setAddingPatient(false);
     }
   };
 
-  const handleDeleteMedication = async (id) => {
+  const createAppointment = async () => {
+    if (!user || !selectedPatientId || !scheduleDate || !scheduleTime) return;
+    setScheduling(true);
+
     try {
-      const { error } = await supabase.from('medications').delete().eq('id', id);
+      const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+
+      const { error } = await supabase
+        .from('appointments')
+        .insert({
+          professional_id: user.id,
+          patient_id: selectedPatientId,
+          scheduled_at: scheduledAt,
+          title: scheduleTitle || 'Consulta',
+          duration_minutes: parseInt(scheduleDuration) || 60,
+          status: 'scheduled'
+        });
+
       if (error) throw error;
-      toast({ title: "Sucesso", description: "Medicamento removido." });
-      fetchAllData();
+
+      toast({ title: 'Agendamento criado!', description: 'O paciente será notificado.' });
+      setShowScheduleDialog(false);
+      resetScheduleForm();
+      loadData();
     } catch (error) {
-      toast({ variant: "destructive", title: "Erro ao remover", description: "Não foi possível excluir o medicamento." });
+      console.error('Error creating appointment:', error);
+      toast({ 
+        title: 'Erro', 
+        description: 'Não foi possível criar o agendamento.', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setScheduling(false);
     }
   };
+
+  const cancelAppointment = async (appointmentId: string) => {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', appointmentId);
+
+      if (error) throw error;
+
+      toast({ title: 'Agendamento cancelado' });
+      loadData();
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      toast({ 
+        title: 'Erro', 
+        description: 'Não foi possível cancelar.', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const resetScheduleForm = () => {
+    setSelectedPatientId('');
+    setScheduleDate('');
+    setScheduleTime('');
+    setScheduleTitle('Consulta');
+    setScheduleDuration('60');
+  };
+
+  const filteredPatients = patients.filter(p => 
+    p.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const upcomingAppointments = appointments.filter(
+    a => a.status === 'scheduled' && new Date(a.scheduled_at) > new Date()
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-          <p className="text-slate-500 font-medium animate-pulse">Carregando prontuário...</p>
-        </div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-20">
-      {/* Header Premium */}
-      <div className="bg-white border-b border-slate-100 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate(-1)}
-              className="w-10 h-10 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-all"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h1 className="text-xl font-black text-slate-900 leading-tight">{patientName}</h1>
-              <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Prontuário Digital</p>
-            </div>
+    <div className="min-h-screen bg-slate-900">
+      {/* Header */}
+      <header className="bg-slate-800 border-b border-slate-700 px-4 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between max-w-4xl mx-auto">
+          <div>
+            <h1 className="text-xl font-bold text-white">Olá, {user?.name?.split(' ')[0]}!</h1>
+            <p className="text-sm text-slate-400">Painel Profissional</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <User size={20} />
-            </div>
-          </div>
+          <Button variant="ghost" size="icon" onClick={signOut} className="text-slate-400 hover:text-white">
+            <LogOut className="w-5 h-5" />
+          </Button>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        {/* Seção de Medicamentos Refatorada */}
-        <section className="space-y-6">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-2xl font-black text-slate-900">Medicamentos</h2>
-            <p className="text-sm text-slate-500 font-medium">Controle de receitas e dosagens atuais</p>
-          </div>
+      <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* Add Patient */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Adicionar Paciente
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Digite o código de conexão"
+                value={connectionCode}
+                onChange={(e) => setConnectionCode(e.target.value.toUpperCase())}
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 font-mono tracking-wider"
+              />
+              <Button 
+                onClick={addPatient} 
+                disabled={addingPatient || !connectionCode.trim()}
+                className="bg-indigo-600 hover:bg-indigo-700"
+              >
+                {addingPatient ? 'Conectando...' : 'Conectar'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="grid lg:grid-cols-3 gap-8 items-start">
-            {/* Formulário de Cadastro Premium */}
-            <div className="lg:col-span-1">
-              <Card className="border-none shadow-xl shadow-indigo-100/50 bg-white rounded-[32px] overflow-hidden">
-                <CardHeader className="bg-slate-900 text-white pb-8 pt-8">
-                  <CardTitle className="text-lg font-bold flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Plus size={18} />
+        {/* Upcoming Appointments */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              Próximos Agendamentos ({upcomingAppointments.length})
+            </CardTitle>
+            <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                  <CalendarPlus className="w-4 h-4 mr-2" />
+                  Agendar
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-slate-800 border-slate-700 text-white">
+                <DialogHeader>
+                  <DialogTitle>Novo Agendamento</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div>
+                    <Label className="text-slate-300">Paciente</Label>
+                    <select
+                      value={selectedPatientId}
+                      onChange={(e) => setSelectedPatientId(e.target.value)}
+                      className="w-full mt-1 bg-slate-700 border-slate-600 text-white rounded-md px-3 py-2"
+                    >
+                      <option value="">Selecione um paciente</option>
+                      {patients.map(p => (
+                        <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-slate-300">Título</Label>
+                    <Input
+                      value={scheduleTitle}
+                      onChange={(e) => setScheduleTitle(e.target.value)}
+                      className="bg-slate-700 border-slate-600 text-white mt-1"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-slate-300">Data</Label>
+                      <Input
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        className="bg-slate-700 border-slate-600 text-white mt-1"
+                        min={new Date().toISOString().split('T')[0]}
+                      />
                     </div>
-                    Novo Medicamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6 -mt-4 bg-white rounded-t-[32px] space-y-5">
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Nome do Remédio</label>
-                      <div className="relative">
-                        <Pill className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <Input 
-                          placeholder="Ex: Ritalina, Risperidona..." 
-                          value={newMedName}
-                          onChange={(e) => setNewMedName(e.target.value)}
-                          className="pl-10 h-12 bg-slate-50 border-none rounded-2xl focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Dosagem</label>
-                        <div className="relative">
-                          <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                          <Input 
-                            placeholder="10mg" 
-                            value={newMedDose}
-                            onChange={(e) => setNewMedDose(e.target.value)}
-                            className="pl-10 h-12 bg-slate-50 border-none rounded-2xl focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all font-medium"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Horário</label>
-                        <div className="relative">
-                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                          <Input 
-                            placeholder="08:00" 
-                            value={newMedTime}
-                            onChange={(e) => setNewMedTime(e.target.value)}
-                            className="pl-10 h-12 bg-slate-50 border-none rounded-2xl focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all font-medium"
-                          />
-                        </div>
-                      </div>
+                    <div>
+                      <Label className="text-slate-300">Horário</Label>
+                      <Input
+                        type="time"
+                        value={scheduleTime}
+                        onChange={(e) => setScheduleTime(e.target.value)}
+                        className="bg-slate-700 border-slate-600 text-white mt-1"
+                      />
                     </div>
                   </div>
-
+                  <div>
+                    <Label className="text-slate-300">Duração (minutos)</Label>
+                    <select
+                      value={scheduleDuration}
+                      onChange={(e) => setScheduleDuration(e.target.value)}
+                      className="w-full mt-1 bg-slate-700 border-slate-600 text-white rounded-md px-3 py-2"
+                    >
+                      <option value="30">30 minutos</option>
+                      <option value="45">45 minutos</option>
+                      <option value="60">1 hora</option>
+                      <option value="90">1h 30min</option>
+                      <option value="120">2 horas</option>
+                    </select>
+                  </div>
                   <Button 
-                    onClick={handleAddMedication}
-                    disabled={isSavingMed}
-                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-lg shadow-indigo-200 font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    onClick={createAppointment}
+                    disabled={scheduling || !selectedPatientId || !scheduleDate || !scheduleTime}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
                   >
-                    {isSavingMed ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                    Salvar Medicamento
+                    {scheduling ? 'Criando...' : 'Criar Agendamento'}
                   </Button>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Lista de Medicamentos Premium */}
-            <div className="lg:col-span-2">
-              <div className="bg-white/40 backdrop-blur-sm rounded-[32px] p-2 border border-white/60">
-                <MedicationList medications={meds} onDelete={handleDeleteMedication} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Outras seções (Gráficos e Logs) mantendo o estilo premium */}
-        <div className="grid lg:grid-cols-2 gap-8">
-          <Card className="border-none shadow-xl shadow-slate-200/50 bg-white rounded-[32px] overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                <Activity className="text-indigo-600" size={20} />
-                Análise de Comportamento
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[300px] pt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={logs.slice().reverse()}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="created_at" 
-                    tickFormatter={(str) => format(new Date(str), 'dd/MM', { locale: ptBR })}
-                    tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8'}}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    domain={[0, 10]} 
-                    tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8'}}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip 
-                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="intensity" 
-                    stroke="#4f46e5" 
-                    strokeWidth={4} 
-                    dot={{r: 6, fill: '#4f46e5', strokeWidth: 3, stroke: '#fff'}}
-                    activeDot={{r: 8, strokeWidth: 0}}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-xl shadow-slate-200/50 bg-white rounded-[32px] overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                <BarChart3 className="text-indigo-600" size={20} />
-                Gatilhos Identificados
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[300px] pt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={triggerStats}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={8}
-                    dataKey="value"
+                </div>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            {upcomingAppointments.length > 0 ? (
+              <div className="space-y-3">
+                {upcomingAppointments.slice(0, 5).map((apt) => (
+                  <div 
+                    key={apt.id} 
+                    className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-xl"
                   >
-                    {triggerStats.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={['#4f46e5', '#818cf8', '#c7d2fe', '#e0e7ff'][index % 4]} cornerRadius={10} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                    <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-white">{apt.title}</p>
+                      <p className="text-sm text-slate-400">
+                        {apt.patient_name} • {format(new Date(apt.scheduled_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => cancelAppointment(apt.id)}
+                      className="text-slate-400 hover:text-red-400"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 text-center py-4">
+                Nenhum agendamento próximo
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Patient List */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Meus Pacientes ({patients.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {patients.length > 0 && (
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Buscar paciente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
+                />
+              </div>
+            )}
+            
+            {filteredPatients.length > 0 ? (
+              <div className="space-y-2">
+                {filteredPatients.map((patient) => (
+                  <div 
+                    key={patient.id} 
+                    onClick={() => navigate(`/patient/${patient.id}`)}
+                    className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-xl cursor-pointer hover:bg-slate-700 transition-colors"
+                  >
+                    <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold">
+                      {patient.full_name?.charAt(0).toUpperCase() || 'P'}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-white">{patient.full_name || 'Paciente'}</p>
+                      <p className="text-xs text-slate-400">{patient.email}</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 text-center py-4">
+                {patients.length === 0 
+                  ? 'Nenhum paciente conectado ainda.' 
+                  : 'Nenhum paciente encontrado.'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </main>
     </div>
   );
 };
