@@ -13,10 +13,12 @@ import {
   Clock,
   CalendarDays,
   Link2,
-  Sparkles
+  Sparkles,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { format } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface DailyLog {
@@ -52,6 +54,13 @@ const FamilyHome = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [connectionCode, setConnectionCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  const goToPreviousWeek = () => setWeekStart(subWeeks(weekStart, 1));
+  const goToNextWeek = () => setWeekStart(addWeeks(weekStart, 1));
 
   useEffect(() => {
     loadData();
@@ -175,7 +184,7 @@ const FamilyHome = () => {
   return (
     <div className="min-h-screen gradient-bg pb-8">
       {/* Header */}
-      <header className="px-6 pt-12 pb-6">
+      <header className="px-6 pt-12 pb-4">
         <div className="flex items-center justify-between">
           <div className="text-white">
             <h1 className="text-2xl font-bold">Olá, {user?.name?.split(' ')[0]}!</h1>
@@ -194,6 +203,63 @@ const FamilyHome = () => {
           </Button>
         </div>
       </header>
+
+      {/* Week Calendar */}
+      <div className="px-4 mb-4">
+        <div className="glass-card rounded-3xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={goToPreviousWeek}
+              className="h-8 w-8 rounded-full hover:bg-muted"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-semibold text-foreground">
+              {format(weekStart, "MMMM yyyy", { locale: ptBR })}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={goToNextWeek}
+              className="h-8 w-8 rounded-full hover:bg-muted"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1">
+            {weekDays.map((day) => {
+              const isToday = isSameDay(day, new Date());
+              const isSelected = isSameDay(day, selectedDate);
+              
+              return (
+                <button
+                  key={day.toISOString()}
+                  onClick={() => setSelectedDate(day)}
+                  className={`flex flex-col items-center py-2 px-1 rounded-2xl transition-all ${
+                    isSelected 
+                      ? 'bg-primary text-primary-foreground' 
+                      : isToday 
+                        ? 'bg-accent/20 text-accent' 
+                        : 'hover:bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-medium">
+                    {format(day, 'EEE', { locale: ptBR }).slice(0, 3)}
+                  </span>
+                  <span className={`text-lg font-bold mt-1 ${
+                    isSelected ? 'text-primary-foreground' : isToday ? 'text-primary' : 'text-foreground'
+                  }`}>
+                    {format(day, 'd')}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       <main className="px-4 space-y-5">
         {/* Quick Actions - Colorful Cards */}
