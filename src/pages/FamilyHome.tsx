@@ -106,20 +106,40 @@ const FamilyHome = () => {
     if (!user) return;
 
     try {
-      // The trigger will generate the code automatically
-      const { error } = await supabase
+      // First check if profile exists
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .update({ connection_code: null }) // Reset to trigger generation
-        .eq('id', user.id);
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (!existingProfile) {
+        // Create profile if it doesn't exist - trigger will auto-generate code
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            full_name: user.name
+          });
+
+        if (insertError) throw insertError;
+      } else {
+        // Profile exists, update to trigger new code generation
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', user.id);
+
+        if (updateError) throw updateError;
+      }
 
       // Refetch to get the new code
       const { data } = await supabase
         .from('profiles')
         .select('connection_code')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       setConnectionCode(data?.connection_code || null);
       toast({ title: 'Código gerado!', description: 'Compartilhe com seu profissional.' });
